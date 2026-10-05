@@ -75,3 +75,12 @@ paired probes. The former checks ±12345; the latter checks truncation of
 constraints admit words through u255, and ordinary NIR constant promotion
 recognizes all four conversions. The emitted bytes match each executed uniform
 probe; out-of-window sources are rejected. Seven conversion-focused tests pass.
+
+## Bit operations
+
+Population count, bit reverse, and unsigned find-MSB accept a uniform source.
+All three are reachable by normal preamble-import folding and constant
+promotion. Their three emitted forms match the executed probes, including the
+alternate population-count destination format used in its probe. Existing
+GPR forms are preserved. Three focused tests pass, covering folding, packing,
+out-of-window rejection, and ordinary integer-unary compilation.
