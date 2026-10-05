@@ -50,6 +50,20 @@ copy operands. The other participating webs are mostly small and noninterfering;
 only two additional webs (roots 1610 and 3270, five members each) have internal
 interference, with two pairs apiece.
 
+Mixed-cycle operand membership by web family (these are operands, not swaps):
+
+| Web roots | Header original | Header repair | Other join original | Other join repair | Late reconciliation |
+|---|---:|---:|---:|---:|---:|
+| 486 | 5 | 35 | 115 | 100 | 0 |
+| 2586–2591 | 6 | 5 | 0 | 18 | 0 |
+| 1082–1084 | 0 | 7 | 0 | 4 | 0 |
+| Remaining roots | 0 | 1 | 5 | 22 | 1 |
+
+Each remaining root contributes one operand. The original-phi roots are 1610,
+2594, 2852, 3270 and 4134; the header repair root is 1053. The other repair
+roots are 251, 1054, 1337, 1603, 1769–1771, 2465, 2847–2848, 3014, 3266,
+3421–3423, 4059–4061, 4122–4125. The late reconciliation is SSA 1216.
+
 Concrete assignment trace:
 
 - SSA 19 gets half-register h140 (r70). `assign_regs` saves that as the web's

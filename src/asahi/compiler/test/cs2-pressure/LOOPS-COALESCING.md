@@ -34,10 +34,64 @@ runs, allocation 12 has 485 in both. Memory phi transfers fall from 199 pairs
 to 3 in allocation 10, and from 201 pairs to 3 in allocation 12. The cost
 model therefore makes a different scheduling/allocation candidate win.
 
-The combined whole-capture replay was interrupted by a target reset after
-5,048 rows; no whole-capture combined totals are claimed. Its incomplete
-`all-coalesce.jsonl` must not be compared as a complete capture. A stable
-window is needed to restart it against the coordinator's loop-only rows.
+The first combined whole-capture replay was interrupted by a target reset after
+5,048 rows. Its incomplete `all-coalesce.jsonl` must not be compared as a complete
+capture. The replacement whole-capture comparison is documented below.
+
+## Completed whole-capture comparison
+
+The replacement runs completed with replay/parser exits `0/0`: 478 seconds for
+loops and 483 seconds for loops + coalescing. Both were CPU-only, pinned to cores
+1–6 at nice 5, with one replay thread. Each emitted 10,161 rows. The loop-only
+control is **byte-for-byte identical** to the coordinator's
+`/root/claude-ra/loops/all-on.jsonl`, SHA256
+`251902084af33b536e2ce7572b6b03853d26d0bbb22533907ae7f72d2a63e4cb`.
+
+| Stage | Variant | Programs | Instructions | True swaps | SAVE | FILL | Scratch sum, B |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Fragment | Loops | 4,127 | 2,693,029 | 50,081 | 21,692 | 19,755 | 30,640 |
+| Fragment | Combined | 4,127 | 2,674,233 | 51,907 | 13,572 | 11,589 | 30,640 |
+| Vertex | Loops | 5,045 | 961,616 | 2,329 | 222 | 222 | 1,056 |
+| Vertex | Combined | 5,045 | 961,616 | 2,329 | 222 | 222 | 1,056 |
+| Compute | Loops | 989 | 1,593,965 | 1,282 | 414 | 813 | 608 |
+| Compute | Combined | 989 | 1,593,965 | 1,282 | 414 | 813 | 608 |
+
+Fragment delta: −18,796 instructions (−0.70%), +1,826 true swaps (+3.65%),
+−8,120 SAVE, −8,166 FILL (−39.29% combined transfers), and −5,670 ordinary
+copies. All 128 changed fragment rows have fewer instructions; none grows.
+Swaps increase in 26 rows and are unchanged in the others. Every row retains
+its GPR count and scratch size. Vertex and compute rows are entirely unchanged.
+Scratch sums aggregate metadata across compiled programs; they are not runtime
+memory consumption. These are static codegen measurements, not timing results.
+
+The 346 at-cap fragment programs improve from 1,178,262 to 1,159,466 instructions;
+swaps rise 44,777 → 46,603. All fragment changes are in this cohort. At-cap
+counts stay 346 fragment / 22 vertex / 4 compute.
+
+### Matching shader-library build settings
+
+The first completed replacement, `all-v2-coalesce.jsonl`, used the
+assertion-enabled CTS library. Its compute output differed even with coalescing
+disabled: a sampled unspilled kernel had 648 instructions versus the reference's
+606. NIR inspection traced this to assertions in the built-in CL shader library,
+including image-addressing abort paths. This was unrelated to coalescing.
+
+For the final CPU comparison, a separate `b_ndebug=true` build disables those
+shader assertions (and native compiler assertions), matching the reference.
+Both final variants use this same library, with only `AGX_SPILL_COALESCE`
+differing. `NIR_DEBUG=novalidate` remains set for the known capture workaround.
+The full identical loop-only control verifies the match, beyond the sample.
+GPU CTS retained its assertion-enabled library and ran with `NIR_DEBUG` unset.
+
+Final CPU library SHA256:
+`21ae4ebd30c09e359312c7e34d1feffe4ff9454d9f0f5841367837e90772e1ee`.
+ICD: `/root/claude-ra/codex-pressure/replay-release-driver/icd.json`.
+The final combined JSONL SHA256 is
+`d7d5f4593bd68ac0f89674f518f4077e861bb2fd675ba5242de6f7666f246421`.
+
+Evidence in the local and mini `loop-comparison/` artifact directories:
+`all-release-{loops,coalesce}.{jsonl,txt}`; local verification and per-stage
+row comparisons are retained as `all-release-comparison.json`.
 
 ## CTS setup repairs and CPU evidence
 
@@ -63,9 +117,11 @@ memory MOVs. These are not counted as passing forced tests.
 
 The CTS wrapper preserves compiler stderr even for passing cases; forced cases
 run individually. Its summarizer requires a passing case to have compiled both
-SAVE and FILL before calling the set spill validation. GPU execution is pending
-a newly granted slot, requested after the CPU fixes passed. No GPU execution
-has occurred for this branch.
+SAVE and FILL before calling the set spill validation. All six GPU sets have now
+completed: see [CTS-20261005-V2.md](CTS-20261005-V2.md). Every variant passed
+463/464 normal and 139/140 forced cases, with one common skip per set and zero
+failures, crashes or flakes. Fifty passing cases in each forced run compiled
+both SAVE and FILL, verified from that GPU run's own compiler output.
 
 Isolated library SHA256:
 `6726cf7c95fbae4e89a48a26a0aeb93d839eccf7fecabf67ad157487cfd29541`
@@ -104,3 +160,6 @@ The selected combined candidate has 154 real reloads and 485 GPR swaps:
 All ten loops still have zero live-through-but-unused reloads. Evidence and
 scripts: `loops-audit/`, `coalesce-audit/`, `loops-reloads/`,
 `coalesce-reloads/`, and the two `*-105-audit.log` files in the local artifacts.
+
+The deeper assignment/interference analysis and bounded allocator proposal are
+in [PHI-WEBS.md](PHI-WEBS.md). No allocator placement change has been implemented.
