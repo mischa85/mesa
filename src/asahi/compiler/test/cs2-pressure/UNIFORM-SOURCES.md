@@ -84,3 +84,18 @@ promotion. Their three emitted forms match the executed probes, including the
 alternate population-count destination format used in its probe. Existing
 GPR forms are preserved. Three focused tests pass, covering folding, packing,
 out-of-window rejection, and ordinary integer-unary compilation.
+
+## Float special functions
+
+Floor, ceil, truncation, round-even, reciprocal square root, exp2 and log2 pass
+uniform-source probes. A separate machine encoding describes this validated
+subset and is selected by normal uniform folding. Dependency finalization and
+source modifiers continue to apply. Constant promotion recognizes these seven
+32-bit operations. Fourteen focused tests pass, including all seven executed
+uniform byte strings and a negative reciprocal folding/packing test.
+
+The reciprocal hypothesis fails: input 4 returns -0.125 instead of 0.25, while
+the GPR control passes. It stays GPR-only. Square-root/sine factors and half
+forms were not probed and also retain their existing GPR sources. Across this
+session, 79 actual GPU dispatches produced 78 exact passes and this one wrong
+result, with no hangs or resets. The target was released after the probes.
