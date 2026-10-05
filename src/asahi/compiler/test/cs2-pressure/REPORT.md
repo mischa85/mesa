@@ -229,3 +229,5 @@ Host logs/results: `tmp/cs2-pressure-20261005/` in the workspace, including
 Mini logs/builds: `/root/claude-ra/codex-pressure/`, with isolated `driver/`,
 `fixed-driver/`, and `home-driver/` directories. Scripts here recreate the
 attribution from logs; the large logs are intentionally not committed.
+
+Completed whole-capture results and initial CTS setup failures: [October 5 results](RESULTS-20261005.md).

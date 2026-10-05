@@ -7,6 +7,7 @@ Based on the streaming reader in tmp/cs2-shaders-20261004/stream-compare.py.
 """
 import argparse
 import collections
+import gzip
 import json
 import re
 import sys
@@ -25,7 +26,8 @@ from compare import metrics
 
 def programs(path):
     name = source = cur = None
-    for line in path.open(errors='replace'):
+    opener = gzip.open if path.suffix == '.gz' else open
+    for line in opener(path, 'rt', errors='replace'):
         if line.startswith('shader: MESA_SHADER_'):
             name = source = None
         elif line.startswith('name: '):
@@ -65,6 +67,9 @@ def aggregate(path):
             groups[group]['programs'] += 1
             for key in ('instrs', 'swaps', 'copies', 'bytes', 'saves', 'fills', 'spills', 'waits'):
                 groups[group][key] += m[key]
+            groups[group]['scratch_sum_bytes'] += program['stats']['scratch']
+            groups[group]['scratch_max_bytes'] = max(groups[group]['scratch_max_bytes'], program['stats']['scratch'])
+            groups[group]['spilling_programs'] += bool(m['spills'])
     return dict(groups), sources
 
 

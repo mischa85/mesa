@@ -2,8 +2,8 @@
 
 Branch: `apple9/spill-home-coalesce`, based on the SSA cleanup fix and pressure
 audit. The prototype builds on the host and passes the focused CPU tests.
-**Mini builds/replays and all GPU tests are waiting for the coordinator's
-explicit end-of-ABAB signal.** No mini command has been issued for this prototype.
+CPU replays are complete. The first GPU CTS attempt exposed a common pre-RA
+NIR assertion and did not validate spilling. See [results](RESULTS-20261005.md).
 
 ## Implementation
 
@@ -48,13 +48,15 @@ The retained fixed repro's postspill IR gives:
 | Interferences between versions of the same home | 0 |
 | Edges after contracting homes | 4,555 |
 | Host model coloring | 69 words |
-| Existing assignment | 72 words |
+| Existing frame metadata (aligned) | 72 words |
 
 `model-spill-coalesce.py` reconstructs liveness and the graph from the retained
 IR. Its 69-word result supports trying full home coalescing without growing the
 frame. It is not a compiled shader measurement. Scratch metadata alignment may
 also hide a small reduction in raw slots: 69 words is 276 bytes, versus the
-current 288-byte frame.
+current 288-byte frame. Actual compiler replay later showed the original raw
+assignment was already 69 words: the model does not demonstrate a reduction.
+Only 383 memory definitions survive DCE into the real coalescer (120 groups).
 
 ## Validation
 
@@ -85,32 +87,23 @@ disabled. These are not claimed as passing tests or silently folded into skips.
 Logs are in `tmp/cs2-pressure-20261005/host-*`; the model is
 `tmp/cs2-pressure-20261005/coalesce-model.json`.
 
-## Replays after ABAB
-
-Build an isolated candidate on the mini, pinned to cores 1–6 at nice 5. Preserve
-the existing baseline, fixed, and frame-probe libraries. First replay graphics
-pipeline `105 106` with the new library and the experiment **unset**; require
-the fixed main's body hash
-`0495ebc4e6d9faa9ebf90e89161e6e657a45f23364e565aaaf90b70669316ed2`.
-Then repeat with `AGX_SPILL_COALESCE=1`, retaining stats, binary, phi-copy audit,
-and coalescing/fallback diagnostics. Report against both prior baselines:
+## Completed replay
 
 | Repro main | Original | SSA cleanup | Coalescing |
 |---|---:|---:|---:|
-| Instructions | 11,759 | 8,041 | pending |
-| True swaps | 1,584 | 735 | pending |
-| SAVE | 645 | 443 | pending |
-| FILL | 782 | 575 | pending |
-| Scratch bytes | 288 | 288 | pending |
+| Instructions | 11,759 | 8,041 | 7,578 |
+| True swaps | 1,584 | 735 | 735 |
+| SAVE | 645 | 443 | 263 |
+| FILL | 782 | 575 | 395 |
+| Scratch bytes | 288 | 288 | 288 |
 
-Only after the coordinator says ABAB is done: terminate its stopped helper
-shell PID 27539 and resume frozen CPU replays 25143/25152, or restart with the
-agreed comparison variants. Whole-capture reporting must retain separate
-fragment/vertex/compute totals and independent at-cap cohorts. Both existing
-full replays use `NIR_DEBUG=novalidate` for the previously identified pre-RA
-pipeline-6 assertion; allocation validation stays enabled. GPU CTS must not
-inherit that workaround.
+The disabled new library reproduces the fixed body hash
+`0495ebc4e6d9faa9ebf90e89161e6e657a45f23364e565aaaf90b70669316ed2`.
+Memory phi copies drop from 201 SAVE/FILL pairs to 21; all 152 same-home
+mismatches disappear. Every GPR edge assignment remains identical, including
+149 cycles / 735 swaps. Raw scratch stays 138 half-slots (69 words).
 
-The 604 selected CTS cases and separate frame-destination probe remain queued
-for the explicitly released GPU slot. No reload-placement change or wider
-allocator restructuring is included in this prototype.
+The remaining GPR repair copies include loop live-through reloads. The
+coordinator owns the loop-handling change; no reload-placement restructuring
+is part of this prototype. Whole-capture totals and CTS limitations are in
+[results](RESULTS-20261005.md).
