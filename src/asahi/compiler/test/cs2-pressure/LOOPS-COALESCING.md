@@ -27,9 +27,17 @@ vertex programs, matching the coordinator's no-TRACE run.
 
 The repro improves 6,271 → 5,781 instructions, 387/354 → 191/157 SAVE/FILL,
 with scratch unchanged at 272 B, but swaps increase 441 → 485. It accounts for
-all 44 extra swaps in this range. Candidate-selection attribution is pending;
-do not claim coalescing directly changes GPR assignment within an allocation.
-Whole-capture comparison is running against the coordinator's loop-only rows.
+all 44 extra swaps in this range. Audit confirms candidate selection explains this: loop-only selects allocation
+10; coalescing selects allocation 12. Every candidate has identical GPR edge
+assignments before and after coalescing. Allocation 10 has 441 swaps in both
+runs, allocation 12 has 485 in both. Memory phi transfers fall from 199 pairs
+to 3 in allocation 10, and from 201 pairs to 3 in allocation 12. The cost
+model therefore makes a different scheduling/allocation candidate win.
+
+The combined whole-capture replay was interrupted by a target reset after
+5,048 rows; no whole-capture combined totals are claimed. Its incomplete
+`all-coalesce.jsonl` must not be compared as a complete capture. A stable
+window is needed to restart it against the coordinator's loop-only rows.
 
 ## CTS setup repairs and CPU evidence
 
@@ -65,3 +73,34 @@ Isolated library SHA256:
 ICD: `/root/claude-ra/codex-pressure/loops-coalesce-driver/icd.json`.
 Artifacts: local `tmp/cs2-pressure-20261005/loop-comparison/`; corresponding
 mini directory `/root/claude-ra/codex-pressure/loop-comparison/`.
+
+## Remaining repro swap attribution
+
+All 441 loop-only swaps occur in phi parallel copies, with zero from constrained
+operand assignment or the allocator's other copy sites. Cycle composition:
+
+| GPR cycle origin | Swaps |
+|---|---:|
+| Original phis only | 62 |
+| Spill-repair phis only | 85 |
+| Original + repair | 278 |
+| Original + repair + live-in reconciliation | 16 |
+
+At loop depths 0/1/2/3, these are 83/197/149/12 swaps. There are 155 real
+reload instructions (354 total FILL minus 199 phi-copy FILL). The previous
+live-through reloads are gone: all ten natural loops have zero reloads whose
+original variable has no non-transfer use in that loop. In particular headers
+17, 46, 61 and 111 now contain zero reloads. Large loops 42 and 107 still have
+71 and 53 reloads, all serving values used inside their respective loops.
+Nested-loop counts overlap and must not be summed.
+
+Of the 85 repair-only swaps, 84 are in cycles mixing computed values, reloads
+and rematerialized constants; one mixes reloads and constants. This does not
+support further removal of loop-unused reloads as the next lever. It does not
+yet establish that the remaining phi permutations are unavoidable.
+
+The selected combined candidate has 154 real reloads and 485 GPR swaps:
+83 original-only, 103 repair-only, 295 original+repair, and 4 original+live-in.
+All ten loops still have zero live-through-but-unused reloads. Evidence and
+scripts: `loops-audit/`, `coalesce-audit/`, `loops-reloads/`,
+`coalesce-reloads/`, and the two `*-105-audit.log` files in the local artifacts.
