@@ -34,3 +34,20 @@ Host checks: 242 tests outside Apple9Compiler before the byte regression was
 added, nine focused compiler tests, and nine select-focused optimization/packer
 tests including the emitted-byte regression. The whole-capture comparison will
 measure all validated families against `49e1b658f99`.
+
+## Predicate comparisons
+
+Both source slots pass in the six-byte less-than and ten-byte equality
+predicate forms. The oracle checks the resulting execution-mask selection,
+including one matching equality lane. Short-form uniform selectors are bits
+39/41; the extended form uses 55/57. Word-index high bits replace the same
+source lifetime fields as in select. Loop-specific and half predicate forms
+remain unchanged because they were not part of this validation.
+
+Predicates have no SSA result, so uniform folding explicitly handles them
+without treating the instruction as a CSE-able pure ALU. Scalar 32-bit NIR
+comparison inputs can be promoted even though the comparison result is boolean.
+The boolean result itself never becomes a 32-bit preamble load. Tests check
+both executed byte encodings and folding of a destination-less predicate.
+Twenty-four existing predicate/shared-RA/control-flow tests and three focused
+predicate tests pass.
