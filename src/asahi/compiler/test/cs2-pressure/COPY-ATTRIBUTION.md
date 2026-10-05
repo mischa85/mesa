@@ -2,8 +2,9 @@
 
 Compiler unchanged at `e495dbbfeea` on top of `d08757466f3`, `be242d6ce10`,
 and `3f9e1013eb7`. No fifth compiler change is proposed for the small compute
-regression. No copy optimization has been implemented. All work in this report
-was performed on the host; the mini remains reserved for the main thread.
+regression. This report records the census before implementing copy changes.
+The subsequent [dead-source SAVE experiment](SAVE-STAGING.md) removes the
+predicted 8,300 staging copies. All census work here was performed on the host.
 
 ## Compute: real, small, and dispersed
 
