@@ -22,7 +22,7 @@ group_size=50
 [[ $mode != forced-spill ]] || group_size=1
 cat > "$out/suite.toml" <<EOF
 [[deqp]]
-deqp = "$cts"
+deqp = "$here/capture-cts.sh"
 caselists = ["$here/cts/$mode.txt"]
 tests_per_group = $group_size
 EOF
@@ -32,8 +32,15 @@ if [[ $mode == forced-spill ]]; then export AGX_MESA_DEBUG=spill; fi
 printf 'icd=%s\nmode=%s\njobs=%s\ncoalescing=%s\n' "$icd" "$mode" "$jobs" "${AGX_SPILL_COALESCE-unset}" > "$out/provenance.txt"
 printf 'loop_handling_disabled=%s\n' "${AGX_SPILL_NO_LOOP_HANDLING-unset}" >> "$out/provenance.txt"
 sha256sum "$icd" "$here/cts/$mode.txt" >> "$out/provenance.txt"
-exec taskset -c 1-6 nice -n 5 /root/cts-tools/bin/deqp-runner suite \
+mkdir -p "$out/compiler"
+export CTS_EXECUTABLE="$cts" CTS_CAPTURE_DIR="$out/compiler"
+runner_status=0
+taskset -c 1-6 nice -n 5 /root/cts-tools/bin/deqp-runner suite \
  --suite "$out/suite.toml" --output "$out/results" --jobs "$jobs" \
  --timeout 60 --max-fails 10000 \
  --skips "$ci/all-skips.txt" --skips "$ci/asahi-skips.txt" --skips "$ci/asahi-agx2-skips.txt" \
- --flakes "$ci/all-flakes.txt" --flakes "$ci/asahi-agx2-flakes.txt" > "$out/runner.log" 2>&1
+ --flakes "$ci/all-flakes.txt" --flakes "$ci/asahi-agx2-flakes.txt" > "$out/runner.log" 2>&1 || runner_status=$?
+check=()
+[[ $mode != forced-spill ]] || check+=(--require-spills)
+python3 "$here/summarize-cts.py" "$out" "${check[@]}"
+exit "$runner_status"
