@@ -1,5 +1,8 @@
 # CS2 pressure audit — 2026-10-05
 
+Follow-up: [spill-home coalescing prototype](COALESCING.md), implemented on the
+host after this audit; mini measurements are waiting for the end of ABAB.
+
 The first fix is a one-character correctness repair in SSA cleanup, not an
 allocator redesign. On the isolated CS2 repro it removes **53.6% of true swaps,
 28.7% of SAVE/FILL instructions, and 31.6% of instructions**. These are CPU
