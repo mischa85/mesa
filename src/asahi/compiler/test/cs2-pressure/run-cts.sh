@@ -18,16 +18,19 @@ mkdir -p "$out"
 out=$(realpath "$out")
 cts=/root/cts-env/build-surfaceless/external/vulkancts/modules/vulkan/deqp-vk
 ci=/root/cs2-batch-overnight-20261005/ci
+group_size=50
+[[ $mode != forced-spill ]] || group_size=1
 cat > "$out/suite.toml" <<EOF
 [[deqp]]
 deqp = "$cts"
 caselists = ["$here/cts/$mode.txt"]
-tests_per_group = 50
+tests_per_group = $group_size
 EOF
 unset ASAHI_MESA_DEBUG AGX_MESA_DEBUG NIR_DEBUG AGX_APPLE9_RA_AUDIT AGX_APPLE9_TRACE AGX_APPLE9_ASM AGX_APPLE9_TRACE_SHARED_RA
 export HK_EXPERIMENTAL_APPLE9=1 MESA_SHADER_CACHE_DISABLE=true AGX_APPLE9_STATS=1 VK_DRIVER_FILES="$icd"
 if [[ $mode == forced-spill ]]; then export AGX_MESA_DEBUG=spill; fi
 printf 'icd=%s\nmode=%s\njobs=%s\ncoalescing=%s\n' "$icd" "$mode" "$jobs" "${AGX_SPILL_COALESCE-unset}" > "$out/provenance.txt"
+printf 'loop_handling_disabled=%s\n' "${AGX_SPILL_NO_LOOP_HANDLING-unset}" >> "$out/provenance.txt"
 sha256sum "$icd" "$here/cts/$mode.txt" >> "$out/provenance.txt"
 exec taskset -c 1-6 nice -n 5 /root/cts-tools/bin/deqp-runner suite \
  --suite "$out/suite.toml" --output "$out/results" --jobs "$jobs" \
