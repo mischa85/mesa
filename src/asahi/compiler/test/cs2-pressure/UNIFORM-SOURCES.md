@@ -99,3 +99,13 @@ the GPR control passes. It stays GPR-only. Square-root/sine factors and half
 forms were not probed and also retain their existing GPR sources. Across this
 session, 79 actual GPU dispatches produced 78 exact passes and this one wrong
 result, with no hangs or resets. The target was released after the probes.
+
+## Loop-weighted constant promotion
+
+Constant-use priorities now multiply by eight per enclosing NIR loop, capped
+at depth six, with saturated accumulation. This is a cost heuristic, not a
+measured trip count. A lone static loop use can therefore justify a uniform
+word; a lone straight-line use still does not. An end-to-end test verifies the
+same literal moves from main to setup only for the loop case. Nine constant
+promotion and preamble tests pass. Capture measurements below distinguish this
+follow-up from the instruction-family changes.
