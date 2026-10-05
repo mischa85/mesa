@@ -86,3 +86,66 @@ separate from the stage-1-versus-previous-combined comparison above.
 
 Artifacts: `stage1-all-{coalesce,loops}.{jsonl,txt}`,
 `stage1-all-comparison.json`, and `stage1-all-coalescing-increment.json`.
+
+## Stage 2: noninterfering affinity classes
+
+Build a sparse interference graph for phi participants from post-spill SSA
+liveness, treating phi destinations as simultaneous entry writes and their
+sources as predecessor-edge uses. Before a union, inspect all members of the
+smaller class for conflicts with the other class. Refuse the union if any pair
+interferes, or if the phi operands' storage class/width differs. This checks
+transitive class interference, not merely the immediate source/destination pair.
+The classes remain soft allocation preferences; no hard SSA merging is done.
+
+| Measurement | Previous combined | Stage 1 | Stage 2 |
+|---|---:|---:|---:|
+| Repro instructions | 5,781 | 4,452 | 4,134 |
+| Repro swaps | 485 | 120 | 36 |
+| Repro ordinary copies | 959 | 718 | 651 |
+| Range fragment instructions | 117,463 | 114,764 | 110,054 |
+| Range fragment swaps | 2,443 | 1,845 | 789 |
+| Range vertex instructions | 29,513 | 29,810 | 29,733 |
+| Range vertex swaps | 47 | 141 | 118 |
+
+The repro retains 191 SAVE / 157 FILL, 96 GPRs and 272 B scratch. Versus stage 1,
+all 28 changed fragment and seven changed vertex outputs in the range shrink.
+No range output grows scratch. Against the original combined baseline, however,
+22 fragment and five vertex outputs still grow.
+
+With coalescing disabled, the stage-2 repro has 4,685 instructions, 34 swaps,
+387 SAVE / 354 FILL, 272 B scratch. Coalescing therefore adds two repro swaps.
+
+All 16 focused host tests pass with assertions enabled, including independent
+loop values sharing a computed initializer. The assertion-enabled allocator
+checks that no interference edge ends inside one class. Independently, all
+3,818 candidate-10 GPR definitions were grouped using the emitted assignment
+trace and checked against the earlier offline interference graph: zero internal
+interfering pairs, with the largest class containing 25 values.
+
+CPU library SHA256:
+`b2829915b52087d1d5dcae7d7fb06f79835d9091708e608a8a3c0a30561c8c28`.
+ICD: `/root/claude-ra/codex-pressure/phi-stage2-driver/icd.json`.
+Artifacts: `stage2-range-{coalesce,loops}.jsonl`, `stage2-range-comparison.json`,
+`stage2-range-increment.json`, and `stage2-105-webs.log`.
+
+### Whole capture
+
+The 10,161-row replay finishes with exits 0/0 in 453 s. Against the previous
+combined baseline:
+
+| Stage | Instructions | Delta | Swaps | Delta | SAVE / FILL | Scratch sum, B |
+|---|---:|---:|---:|---:|---:|---:|
+| Fragment | 2,527,738 | −146,495 | 20,051 | −31,856 | 13,572 / 11,589 | 30,640 |
+| Vertex | 969,154 | +7,538 | 5,061 | +2,732 | 222 / 222 | 1,056 |
+| Compute | 1,592,267 | −1,698 | 914 | −368 | 414 / 813 | 608 |
+
+Compared with stage 1, this removes another 100,717 instructions and 22,417
+swaps across stages. Fragment instructions shrink/grow in 641/8 rows, vertex
+in 202/4, and compute in 61/2. Against the original combined baseline those
+counts are 852/446, 150/120, and 269/381, respectively. The vertex total is
+still worse than baseline. Every output retains its SAVE/FILL and scratch;
+two fragment outputs fall below the 96-GPR cap. GPR lower/higher counts versus
+baseline are 35/13 fragment, 18/2 vertex, and 10/31 compute.
+
+Artifacts: `stage2-all-coalesce.{jsonl,txt}`, `stage2-all-comparison.json`,
+and `stage2-all-vs-stage1.json`.
