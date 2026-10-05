@@ -51,3 +51,18 @@ The boolean result itself never becomes a 32-bit preamble load. Tests check
 both executed byte encodings and folding of a destination-less predicate.
 Twenty-four existing predicate/shared-RA/control-flow tests and three focused
 predicate tests pass.
+
+## Shifts
+
+Arithmetic right, logical right, and logical left pass with a uniform data
+operand for both immediate and register shift forms; their register-amount
+source also passes. These nine paired cases check negative arithmetic shifts,
+distinct full-word data, and varying per-lane data for uniform amounts.
+The fixed-source register selector is cleared and its discard field is set
+for uniforms; the source cache bit holds uniform word bit 7. The immediate
+amount encoding stays immediate. Source compaction cannot change a register
+shift into an immediate shift: the encoding now determines that distinction.
+
+The nine executed uniform instruction byte strings have a packer regression.
+A folding test checks that a uniform amount preserves the register form.
+Eight shift-focused packer, optimization, and compiler tests pass.
