@@ -149,3 +149,132 @@ baseline are 35/13 fragment, 18/2 vertex, and 10/31 compute.
 
 Artifacts: `stage2-all-coalesce.{jsonl,txt}`, `stage2-all-comparison.json`,
 and `stage2-all-vs-stage1.json`.
+
+
+## Stage 3: weighted preferences from every phi edge
+
+Retain both directions of every phi edge instead of overwriting a value's last
+phi user. Weight each edge by `8^min(predecessor loop depth, 6)`, so a loop
+backedge is favored over its entry. Register preferences read the actual phi
+operand placement, including edge-local splits. Equal-register preferences
+accumulate their weights. Among legal placements, prefer direct edge matches,
+then weighted history from other noninterfering class members. The latter
+remembers all assigned locations and updates a member when RA moves it; there
+is no sticky first register. Constrained placement still prioritizes avoiding
+new relocation moves over affinity. Collect/export preferences remain separate.
+The free-register check also accepts a tuple ending exactly at the register
+bound. All preferences are soft and obey existing bounds and interference.
+
+| Measurement | Previous combined | Stage 2 | Stage 3 |
+|---|---:|---:|---:|
+| Repro instructions | 5,781 | 4,134 | 4,019 |
+| Repro swaps | 485 | 36 | 17 |
+| Repro ordinary copies | 959 | 651 | 604 |
+| Range fragment instructions | 117,463 | 110,054 | 107,587 |
+| Range fragment swaps | 2,443 | 789 | 113 |
+| Range vertex instructions | 29,513 | 29,733 | 29,705 |
+| Range vertex swaps | 47 | 118 | 111 |
+
+The repro retains 191 SAVE / 157 FILL, 96 GPRs and 272 B scratch. Compared with
+stage 2, all 46 changed fragment and five changed vertex outputs shrink; every
+range output retains its GPR count and scratch. This does not yet eliminate the
+range vertex regression against the original combined baseline.
+
+All 16 focused host tests pass with assertions. The broader host run excluding
+`Apple9Compiler.*` passes 238/238. The unfiltered run still aborts at the
+previously baseline-confirmed `Apple9Compiler.WritableSinkPointer` NIR divergence
+assertion (see [COALESCING.md](COALESCING.md)); it is not a complete-suite pass.
+
+Release replay library SHA256:
+`8874ba3dcc1161fbe8cf76edd37b54f3f8c510581b7c38eb874d8daf4cc7cb2f`.
+ICD: `/root/claude-ra/codex-pressure/phi-stage3-driver/icd.json`.
+Artifacts: `stage3-range-coalesce.{jsonl,txt}`, `stage3-range-vs-stage2.json`.
+An independently rebuilt assertion-enabled driver passes the entire [0, 200)
+graphics range with exits 0/0. All 378 output rows are byte-identical to the
+release replay. Native compiler and RA assertions are enabled; `NIR_DEBUG=novalidate`
+remains necessary for this capture's known unrelated NIR issue. Its library SHA256
+is `0321267fbf3a00d4df8bee87da777e3ec1916047f18cb20ac7d8028f0103f577`, under
+`phi-stage3-assert-driver/`. The four focused forced-spill host tests also pass.
+
+### Whole capture
+
+The 10,161-row combined replay finishes with exits 0/0 in 549 s. It overlapped
+other authorized CPU work; elapsed time is not a controlled compiler-speed
+comparison. Against the original combined baseline:
+
+| Stage | Instructions | Delta | Swaps | Delta | SAVE / FILL | Scratch sum, B |
+|---|---:|---:|---:|---:|---:|---:|
+| Fragment | 2,468,862 | −205,371 | 3,328 | −48,579 | 13,572 / 11,589 | 30,640 |
+| Vertex | 967,291 | +5,675 | 4,593 | +2,264 | 222 / 222 | 1,056 |
+| Compute | 1,591,894 | −2,071 | 569 | −713 | 414 / 813 | 608 |
+
+Total instructions fall by 201,767 and swaps by 47,028. Every output retains
+its SAVE/FILL and scratch size. Fragment instruction counts shrink/grow in
+1,040/320 rows, vertex in 168/127, and compute in 333/320. Fragment swaps fall
+in 994 outputs and rise in none. GPR lower/higher counts are 10/27 fragment,
+19/2 vertex, and 144/6 compute. At-cap totals equal the baseline's 346/22/4;
+the two fragment outputs that stage 2 moved below the cap return to it.
+
+Relative to stage 2, stage 3 removes another 61,112 instructions and 17,536
+swaps. Changed instruction counts shrink/grow in 860/85 fragment, 140/23
+vertex, and 237/163 compute rows. The improvement is aggregate, not universal.
+
+The vertex trade-off from constant isolation remains material and separate:
+
+| Combined variant | Vertex instructions | Delta from baseline | Vertex swaps | Delta from baseline |
+|---|---:|---:|---:|---:|
+| Original | 961,616 | — | 2,329 | — |
+| Stage 1 | 971,389 | +9,773 | 5,611 | +3,282 |
+| Stage 2 | 969,154 | +7,538 | 5,061 | +2,732 |
+| Stage 3 | 967,291 | +5,675 | 4,593 | +2,264 |
+
+Artifacts: `stage3-all-coalesce.{jsonl,txt}`, `stage3-all-comparison.json`,
+and `stage3-all-vs-stage2.json`.
+
+### Does this remove coalescing's extra swaps?
+
+Yes, after stage 3, including a per-output check rather than only equal totals.
+All paired runs contain 10,161 rows. The stage-2 loops run finishes with exits
+0/0 in 546 s; the stage-3 loops run finishes with exits 0/0 in 553 s.
+
+| Allocator | Fragment swaps, loops | Fragment swaps, combined | Coalescing increment | Repro increment |
+|---|---:|---:|---:|---:|
+| Original | 50,081 | 51,907 | +1,826 | +44 |
+| Stage 1 | 41,550 | 41,832 | +282 | +5 |
+| Stage 2 | 19,845 | 20,051 | +206 | +2 |
+| Stage 3 | 3,328 | 3,328 | **0** | **0** |
+
+For stage 2, coalescing saves 21,730 fragment instructions and 16,286 transfers;
+128 fragment outputs shrink and 16 grow. For stage 3, it saves 2,912 fragment
+instructions and 2,848 transfers (1,424 SAVE + 1,424 FILL); all 128 changed
+fragment outputs shrink. **Every output's swaps, ordinary copies, GPR count and
+scratch are identical** with stage-3 coalescing on/off. Every vertex and compute
+row is completely identical between the paired runs.
+
+| Stage-3 fragment total | Loops only | Combined |
+|---|---:|---:|
+| Instructions | 2,471,774 | 2,468,862 |
+| Swaps | 3,328 | 3,328 |
+| Ordinary copies | 153,140 | 153,140 |
+| SAVE | 14,996 | 13,572 |
+| FILL | 13,013 | 11,589 |
+| Scratch sum, B | 30,640 | 30,640 |
+
+The smaller marginal SAVE/FILL benefit is not a regression in the combined
+result. Weighted affinity also applies to spill-memory phis and eliminates
+memory-to-memory copies without explicit spill-home coalescing. These copies
+otherwise lower through memory/register transfers. The stage-3 loop-only repro
+has 4,071 instructions, 17 swaps, 604 ordinary copies, 217 SAVE / 183 FILL,
+96 GPRs and 272 B scratch; combined has 4,019 instructions and 191 / 157 transfers.
+
+Artifacts: `stage2-all-loops.{jsonl,txt}`, `stage3-all-loops.{jsonl,txt}`,
+`stage2-all-coalescing-increment.json`, and
+`stage3-all-coalescing-increment.json`.
+
+### GPU validation status
+
+All current CPU replays have finished. GPU CTS is deferred until the main
+thread relays **mini free**, as requested while it measures in-game CPU/FPS.
+No new CPU or GPU jobs will start on the mini before then. The final assertion
+driver and the existing 464-case normal / 140-case forced-spill sets are ready;
+no CTS results for these three new stages are claimed here.
