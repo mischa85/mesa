@@ -66,3 +66,12 @@ shift into an immediate shift: the encoding now determines that distinction.
 The nine executed uniform instruction byte strings have a packer regression.
 A folding test checks that a uniform amount preserves the register form.
 Eight shift-focused packer, optimization, and compiler tests pass.
+
+## Integer/float conversions
+
+Signed and unsigned 32-bit integer-to-float and float-to-integer sources pass
+paired probes. The former checks ±12345; the latter checks truncation of
+±123.75. Uniform folding removes the import from the GPR source list. Machine
+constraints admit words through u255, and ordinary NIR constant promotion
+recognizes all four conversions. The emitted bytes match each executed uniform
+probe; out-of-window sources are rejected. Seven conversion-focused tests pass.
