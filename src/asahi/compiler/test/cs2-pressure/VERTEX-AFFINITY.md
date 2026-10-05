@@ -3,8 +3,9 @@
 The three phi-affinity commits remain unchanged: `3f9e1013eb7`,
 `be242d6ce10`, `d08757466f3`. This fourth change restores a useful constant
 register hint without restoring the shared-constant affinity bridges.
-Everything below was prepared on the host while the mini was reserved for the
-main thread. The fix has **not** been measured on the mini or GPU-tested.
+The analysis below was prepared on the host while the mini was reserved for
+the main thread. Subsequent [mini replay and CTS validation](CTS-STAGE4-20261005.md)
+passed; its separately labelled results supersede the pending status below.
 
 ## Distribution from the saved mini replay
 
