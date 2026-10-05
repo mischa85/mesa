@@ -21,7 +21,9 @@ spilling = collections.defaultdict(collections.Counter)
 totals = collections.Counter()
 pattern = re.compile(r'^APPLE9_CODEGEN stage=(\d+).* saves=(\d+) fills=(\d+)')
 for log in (a.output / 'compiler').glob('*.log'):
-    cases = log.with_suffix('.cases').read_text().splitlines()
+    casefile = log.with_suffix('.cases')
+    # Runner discovery invocations have no caselist.
+    cases = casefile.read_text().splitlines() if casefile.exists() else []
     for line in log.open(errors='replace'):
         m = pattern.match(line)
         if not m:
