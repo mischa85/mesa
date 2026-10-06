@@ -75,6 +75,31 @@ machine-readable evidence. They are not counts of executed CTS passes.
 | `EXT_image_view_min_lod`, min/max filtering, custom border colors | vkd3d correctness/feature-level concerns; custom border optional in DXVK runtime table | Min-LOD extension and feature true with Apple9 lowering; custom border colors absent. Min/max filtering false normally, **faked** by vkd3d's existing drirc | API/sampling correctness issues must remain separate from compiler acceptance. vkd3d's profile includes custom border colors even though runtime setup treats the extension as optional. |
 | Mesh/task, ray query / ray tracing | Optional modern D3D12 tiers and DXR; FL12_2 has broader requirements | Absent | E.g. 1,234 ray-query entries fail. Not prerequisites for ordinary D3D9/D3D11 rendering. |
 
+The related CTS family view (distinct entry identities, including shared helper
+shaders) is below. All failures/crashes retain an unadvertised-feature or
+exceeded-limit classification; none is a new advertised compiler failure.
+
+| CTS family substring | Successful compiles | Compiler failures | Crashes |
+| --- | ---: | ---: | ---: |
+| `descriptor_indexing` | 530 | 1,400 | 0 |
+| `geometry` | 4,536 | 4,158 | 48 |
+| `tessellation` | 1,339 | 125 | 0 |
+| `transform_feedback` | 2,078 | 73 | 125 |
+| `subgroups` | 23,924 | 27,095 | 0 |
+| `robust` | 13,463 | 3,074 | 0 |
+| `multisample` | 3,882 | 45 | 0 |
+| `interlock` | 349 | 198 | 0 |
+| `demote` | 45 | 0 | 0 |
+| `float_controls` | 8,885 | 1,704 | 0 |
+| `compute_shader_derivatives` | 100 | 84 | 0 |
+| `fragment_shading_barycentric` | 272 | 3,877 | 0 |
+
+All 1,400 descriptor-indexing-family failures require `RawAccessChainsNV`.
+The robustness-family failures require image int64 atomics (2,492), storage
+image multisampling (292), long vectors (282), ray query (7), or fragment
+shading rate (1). These examples explain why an unsupported mixed test must
+not be reported as an ordinary descriptor-indexing or robustness2 blocker.
+
 The shipped engine configuration matters: `00-hk-defaults.conf` enables
 `vertexPipelineStoresAndAtomics` for DXVK and vkd3d, allowing their normal
 FL11_1 check to advance; a generic query without that config reports it false.
@@ -122,9 +147,14 @@ The additional candidate policies remain unchanged. Stop after this pass;
 there is no new overall-corpus timing estimate.
 
 Validation: all 433 host compiler tests pass, including spilled loop-phi
-execution and live-source preservation. Focused corpus comparison is recorded
-below when complete. No hardware was accessed during this task; the mini
-remained available to its existing lease holder.
+execution and live-source preservation. All outcomes and complete recorded
+main/preamble statistics and final-program records match the preceding tip in
+the 10,737-entry focused CTS population, 268 Willems shaders, and 17 vkmark
+shaders. The CTS subset has 10,421 successful compiles, 191 compiler failures,
+and 125 crashes; Willems has 263 successful compiles and five pre-existing
+compiler failures; vkmark has 17 successful compiles. No new failure or recorded
+code-generation change appears. No hardware was accessed during this task;
+the mini's existing lease was left untouched.
 
 ## Evidence and reproduction
 

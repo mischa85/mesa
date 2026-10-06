@@ -265,3 +265,14 @@ uses the normal default (`ASAHI_MESA_DEBUG` unset); `AGX_SPILL_COALESCE=1` in bo
 runs. The mini lease was acquired with `wait` and released after the runs.
 The driver was not installed system-wide. Logs and hashes are retained under
 workspace `artifacts/mesa-compiler-db0867aa028/`.
+
+## Proton readiness and final GS timing pass
+
+[The Proton readiness audit](PROTON-READINESS.md) maps current DXVK/vkd3d
+runtime gates to Apple9 features and the classified CTS compiler corpus.
+`c95d71e9031` replaces repeated predecessor register-file scans with a sorted
+SSA live-out map. The five large GS now take 39.950 seconds versus 45.153
+before this pass and 28.972 pre-CS2: an 11.5% reduction, leaving 37.9% overhead.
+All 433 units pass; the 10,737 CTS inputs, 268 Willems and 17 vkmark inputs retain
+identical outcomes and complete recorded program statistics. This pass used
+no hardware. Raw evidence is in workspace `artifacts/proton-readiness-20261006/`.
