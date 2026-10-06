@@ -70,8 +70,8 @@ hardware result. The normal/forced skip is the unsupported long-vector phi
 case. Forced-spill compiler captures contain **430 SAVE and 660 FILL** operations,
 with **31 passing single-case runs** containing both, establishing actual
 execution with spilling. The older allocator-only run had 432/662 across 32
-cases; the integrated optimizations remove one pair and its case no longer
-needs spills. Outcome identity is unchanged.
+cases; the integrated optimizations remove two SAVE/FILL pairs from
+`spirv_assembly.instruction.compute.opphi.wide`, which no longer needs spills. Outcome identity is unchanged.
 
 `AGX_SPILL_COALESCE=1` is used in the normal and forced runs; only the forced run
 sets `AGX_MESA_DEBUG=spill`. Compression remains enabled, `ASAHI_MESA_DEBUG` and
