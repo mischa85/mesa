@@ -3,7 +3,9 @@
 Audit date: 2026-10-06. Target: T8132 / Apple M4 G16G, experimental
 Honeykrisp. Compiler baseline: `db0867aa028`; allocator follow-up:
 `c95d71e9031`. This is a compiler and advertised-capability audit, not a claim
-that a game, D3D feature level, or CTS execution passes.
+that a game or D3D feature level works. A subsequent
+[FP32 denormal follow-up](../fp32-denorm/RESULTS.md) validates and enables FTZ32
+with focused hardware and CTS execution; FP32 preservation remains unsupported.
 
 ## Result and priorities
 
@@ -21,10 +23,10 @@ the instruction causing compilation to fail.
 
 | Rank | Gap / affected use | Apple9 exposure | CTS compiler evidence | Scope of a fix |
 | --- | --- | --- | --- | --- |
-| 1 | FP32 denorm modes; vkd3d's SM 6.2 gate (and thus its progression to 6.5+) | Both FP32 preserve and flush-to-zero properties false | The earlier 201 `DenormFlushToZero` labels were misattributed: all 201 modules also require unsupported FP64. All 579 FTZ32 entry identities without FP64 compile; execution is unvalidated | Arithmetic flushes denorms, while min/max and sign-bit operations can pass them through. FTZ needs per-operation handling; preservation also needs a complete strategy. Not a feature-bit flip. |
+| 1 | FP32 denorm preservation; vkd3d's SM 6.2 gate (and thus its progression to 6.5+) | FTZ32 now true; preserve32 remains false | The earlier 201 `DenormFlushToZero` labels were misattributed: all 201 modules also require unsupported FP64. All 579 FTZ32 entry identities without FP64 compile. The follow-up enables 636 previously skipped CTS cases, all passing | FTZ result handling is implemented and validated. Preservation still needs arithmetic/comparison support; vkd3d requires both modes. |
 | 2 | Buffer int64 atomics and linear compute derivatives; SM 6.6 | Both false; image/shared int64 atomics also false | 920 primary `Int64Atomics` failures; 24 linear and 60 quad derivative failures; 2,892 image-int64 failures are a separate optional capability | Memory atomic semantics and derivative lane/workgroup mapping need implementation and execution tests. Runtime SM 6.6 requires buffer atomics, not all the stronger profile's atomic features. |
 | 3 | Wide graphics interfaces in individual D3D11/D3D12 shaders | VS/GS/TES output and FS input limited to 96 user components | 8 stage-I/O and 5 stage-output cases exceed advertised limits | Generalize varying transport/layout with hardware validation; no evidence here that a particular title hits this limit. |
-| 4 | Double precision, optional D3D11/D3D12 shader feature | `shaderFloat64` false | 7,468 primary `Float64` failures | General FP64 lowering/emulation; not a common DXVK initialization requirement. |
+| 4 | Double precision, optional D3D11/D3D12 shader feature | `shaderFloat64` false | 7,468 original `Float64` labels, plus the 201 misattributed FTZ labels | General FP64 lowering/emulation; not a common DXVK initialization requirement. |
 | 5 | Barycentrics, optional D3D12 shader feature | Barycentric extension/feature absent | 2,977 primary `FragmentBarycentricKHR` failures | Interpolation/fragment-input implementation; not itself the SM 6.1/6.2 version gate. |
 
 Interlock/ROVs are an important **exposure and execution-validation** gap, but
@@ -61,7 +63,7 @@ machine-readable evidence. They are not counts of executed CTS passes.
 | Descriptor indexing, nonuniform access, runtime arrays, update-after-bind | DXVK requires descriptor indexing, runtime arrays, sampled-image UAB, partially-bound/update-unused. vkd3d strongly requires almost all indexing features and at least one million UAB descriptors except UBOs | Required bits and the other nonuniform indexing bits true; relevant UAB limits 1,048,576 | `descriptor_indexing` family covered; 470 `ShaderNonUniform` and 3,161 `RuntimeDescriptorArray` entries compile. Failures with these declarations require other unadvertised features. |
 | Int8 / Int16 / Int64 and 8/16-bit buffer storage | Current DXVK requires all three integer widths; vkd3d needs Int16 for its SM6 wave path, Int64 for optional integer ops and Int8 for SM6.6 | All true, including storage and scalar/standard UBO layout | 15,962 / 16,961 / 16,642 successful entries respectively. Int64 arithmetic support does not imply int64 atomics. |
 | Float16 | DXVK min-precision support; vkd3d relaxed/native 16-bit arithmetic | True; FP16 denorm preservation true; storage-buffer offset alignment 16 | 10,604 capability-bearing entries compile. Other-capability failures remain in mixed tests. |
-| Float64 | Optional double-precision D3D11/D3D12 operations | False | 7,468 primary failures; see ranked table. |
+| Float64 | Optional double-precision D3D11/D3D12 operations | False | 7,468 original primary labels, plus the 201 misattributed FTZ labels; see ranked table. |
 | Geometry and tessellation | Geometry required in common DXVK setup; tessellation gates D3D11 FL11_0; vkd3d baseline graphics | Both true | Geometry/tessellation families covered; 13,982 / 21,723 capability-bearing entries compile. Failures are classified as other unadvertised features or exceeded limits. |
 | `EXT_transform_feedback`, geometry streams | D3D stream output; enabled as a client feature in DXVK, present in vkd3d's baseline profile | Both true, four streams | 2,024 XFB-capability entries compile. Unsupported features and over-limit stream/layout tests explain remaining failures/crashes. |
 | Sample-rate shading and multisampling | Required by common DXVK setup and D3D graphics behavior | Sample-rate shading true | 681 `SampleRateShading` entries compile. Mixed unsupported-feature inputs are not evidence against that bit. |
@@ -111,7 +113,8 @@ feature is separately implemented and advertised.
 
 For D3D12 shader-model inference, the queried subgroup/layout/Int16 bits satisfy
 the SM6.0 check, but the FP32 float-control properties stop the normal progression
-to SM6.2. Native 16-bit support has its own check (FP16, Int16, 16-bit storage,
+to SM6.2. The follow-up enables FTZ32, but preservation remains false and
+that gate still applies. Native 16-bit support has its own check (FP16, Int16, 16-bit storage,
 FP16 denorm preservation, and buffer alignment). Optional barycentrics, FP64,
 ray tracing, and mesh features must not be conflated with mandatory SM-version
 gates. This source-based inference is not a vkd3d device-creation run.

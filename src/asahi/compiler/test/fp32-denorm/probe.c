@@ -59,6 +59,10 @@ main(int argc, char **argv)
    CK(vkEnumeratePhysicalDevices(inst, &n, &pd));
    VkPhysicalDeviceDriverProperties driver = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+   VkPhysicalDeviceFloatControlsProperties controls = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES,
+   };
+   driver.pNext = &controls;
    VkPhysicalDeviceProperties2 prop = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
       .pNext = &driver};
@@ -66,6 +70,10 @@ main(int argc, char **argv)
    fprintf(stderr, "DEVICE %s DRIVER %s %s VERSION %u\n",
            prop.properties.deviceName, driver.driverName, driver.driverInfo,
            prop.properties.driverVersion);
+   fprintf(stderr, "FP32_CONTROLS ftz=%u preserve=%u signed_zero_inf_nan=%u\n",
+           controls.shaderDenormFlushToZeroFloat32,
+           controls.shaderDenormPreserveFloat32,
+           controls.shaderSignedZeroInfNanPreserveFloat32);
    if (!strstr(prop.properties.deviceName, "Apple M4"))
       return 2;
    bool atomic = strstr(argv[1], "atomic_add") != NULL;
@@ -258,7 +266,8 @@ main(int argc, char **argv)
    unsigned bad = 0;
    for (unsigned i = 0; i < count; i++) {
       const uint32_t *v = map[1] + i * 4, *in = input + i * 4;
-      if (v[0] != in[0] || v[1] != in[1] || v[3] != (in[3] ^ 0x6d2b79f5u))
+      if (v[0] != in[0] || v[1] != in[1] || v[2] == 0xcdcdcdcdu ||
+          v[3] != (in[3] ^ 0x6d2b79f5u))
          bad++;
       printf("%u %08x %08x %08x %08x\n", i, v[0], v[1], v[2], v[3]);
    }
