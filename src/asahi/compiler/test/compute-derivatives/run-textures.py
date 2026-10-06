@@ -39,8 +39,10 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
         if not all(map(math.isfinite, [implicit,explicit,qx])) or math.isnan(qy): failures.append('nonfinite')
         if case['lod'] is not None and not math.isfinite(qy): failures.append('nonfinite LOD')
         if abs(implicit-explicit) > .002: failures.append('gradient control')
-        # Anisotropic LOD selection is implementation dependent. For that
-        # arm compare the two sample paths; retain query values as evidence.
+        # Every mip is tagged with its physical level plus one. Query and
+        # sampling must agree even where anisotropic selection is variable.
+        if abs(implicit-(qx+case['base']+1)) > .04: failures.append('query/sample agreement')
+        # Only the isotropic arms have an implementation-independent oracle.
         if case['aniso'] == 1:
             if abs(implicit-case['expected_sample']) > .04: failures.append('sample reference')
             if abs(explicit-case['expected_sample']) > .04: failures.append('explicit reference')
