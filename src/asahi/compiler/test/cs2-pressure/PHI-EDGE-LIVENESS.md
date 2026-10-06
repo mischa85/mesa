@@ -102,3 +102,38 @@ copy categories, tests of control identity and full per-program summaries.
 `phi-edge-census-host.tar.gz` archives this evidence with source/hash provenance.
 It depends on the existing workspace toolchain/support libraries and is not a
 portable build environment. No diagnostic code was added to production.
+
+## After dead-source placement and uniform promotion
+
+The final `ff53faea9e7` census includes `abe5ef899fa`'s dead-source phi placement
+and the complete uniform-source / loop-weighting series. It is not an isolated
+measurement of the phi placement change. All 10,161 main metric rows are
+byte-identical to the final uniform measurement, with 6,100 preambles; every
+origin and source-identity check passes.
+
+| Original-phi ordinary copy classification | Fragment | Vertex | Compute |
+|---|---:|---:|---:|
+| Source live after edge | 17,278 | 6,560 | 7,161 |
+| Dead source, pair interferes elsewhere | 2,676 | 0 | 15 |
+| Dead noninterfering source, peer already coalesced | 16,631 | 794 | 539 |
+| Additional move from repeated-source fanout | 240 | 48 | 91 |
+| Distinct candidate coalescing opportunities | 32,558 | 2,945 | 7,899 |
+| Total remaining original-phi ordinary copies | 69,383 | 10,347 | 15,705 |
+| Constrained fraction under the current model | **53.07%** | **71.54%** | **49.70%** |
+
+“Constrained” is total minus the distinct candidate upper bound: live/interfering
+pairs and moves required by distinct-destination fanout. Across stages it is
+52,033 of 95,435 remaining copies, or 54.52%. This is a lower bound on required
+moves under the current SSA/interference/distinct-destination model. It is not
+a proof against value-aware aliasing or a different live-range transformation.
+The other 43,402 copies are an opportunity upper bound, not guaranteed savings.
+Of the fragment candidates, 30,440 are computed values and 2,118 are constants.
+
+The fragment population falls from 76,186 copies after low-constant placement
+to 69,383 here, while its candidate bound falls from 38,143 to 32,558. Keep the
+complete instruction/copy/spill cost comparison in
+[UNIFORM-SOURCES.md](UNIFORM-SOURCES.md), since coalescing and uniform promotion
+can also move costs outside phi edges. Full stage, edge and pressure partitions
+are in [phi-edge-liveness-after-uniforms.json](phi-edge-liveness-after-uniforms.json).
+Per-program records and pipeline hashes remain in
+`tmp/cs2-pressure-20261005/phi-edge-analysis/final-whole-summary/programs.csv`.
