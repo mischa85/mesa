@@ -14,7 +14,7 @@ with the pressure schedule. In practice it rarely survived:
 - Candidate comparison ranked dependency gaps after instructions, bytes and
   registers, so any extra move or register lost.
 
-Static evidence (`AGX_APPLE9_ASM`, own tooling `latmetrics.py`): in CS2 3,497
+Static evidence (`AGX_APPLE9_ASM`, tooling in `latency/`): in CS2 3,497
 of 5,163 device-load waits came within two instructions of the load; 1,103 of
 those were followed by a load that did not depend on it (conservative vector
 taint), i.e. independent memory accesses issued one at a time.
