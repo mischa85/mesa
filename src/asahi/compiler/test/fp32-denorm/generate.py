@@ -43,6 +43,9 @@ add('half_negative_subnormal_input',0x8001)
 (a.output/'inputs.bin').write_bytes(b''.join(struct.pack('<4I',*c['words']) for c in cases))
 ops={
  'identity':'u.x','negate':'floatBitsToUint(-x)','abs':'floatBitsToUint(abs(x))',
+ 'select_passthrough':'floatBitsToUint(u.y != 0u ? x : y)',
+ 'multiply_one':'floatBitsToUint(x*1.0)',
+ 'double_negate':'floatBitsToUint(-(-x))',
  'add':'floatBitsToUint(x+y)','multiply':'floatBitsToUint(x*y)',
  'fma':'floatBitsToUint(fma(x,y,z))','add_abs':'floatBitsToUint(abs(x)+y)',
  'multiply_abs':'floatBitsToUint(abs(x)*y)','fma_abs':'floatBitsToUint(fma(abs(x),y,z))',
@@ -58,6 +61,7 @@ ops={
  'f32_to_half':'packHalf2x16(vec2(x,0.0))','half_to_f32':'floatBitsToUint(unpackHalf2x16(u.x).x)',
  'f32_to_i32':'uint(int(x))','f32_to_u32':'uint(x)',
  'i32_to_f32':'floatBitsToUint(float(int(u.x)))','u32_to_f32':'floatBitsToUint(float(u.x))',
+ 'atomic_add':None,
 }
 for name,expr in ops.items():
  source='''#version 450
@@ -72,8 +76,34 @@ void main() {
  precise uint result=EXPR;
  output_data.data[i]=uvec4(u.xy,result,u.w^0x6d2b79f5u);
 }
-'''.replace('EXPR',expr)
+'''
+ if name == 'atomic_add':
+  source=source.replace('#version 450', '#version 450\n#extension GL_EXT_shader_atomic_float : require')
+  source=source.replace('layout(set=0,binding=1,std430) writeonly buffer Output { uvec4 data[]; } output_data;',
+    'struct Result { uint a; uint b; float value; uint tag; };\nlayout(set=0,binding=1,std430) buffer Output { Result data[]; } output_data;')
+  source=source.replace('precise uint result=EXPR;','atomicAdd(output_data.data[i].value, y);')
+  source=source.replace('output_data.data[i]=uvec4(u.xy,result,u.w^0x6d2b79f5u);',
+    'output_data.data[i].a=u.x;output_data.data[i].b=u.y;output_data.data[i].tag=u.w^0x6d2b79f5u;')
+ else:
+  source=source.replace('EXPR',expr)
  path=a.output/(name+'.comp');path.write_text(source)
  subprocess.run(['glslangValidator','-V','--target-env','vulkan1.2',str(path),'-o',str(a.output/(name+'.spv'))],check=True,stdout=subprocess.DEVNULL)
+ # Explicit FTZ variants also preserve signs of zero, infinities and NaNs.
+ # Keep default-mode probes separate: they characterize existing behavior.
+ words=list(struct.unpack('<%dI'%((a.output/(name+'.spv')).stat().st_size//4),
+                          (a.output/(name+'.spv')).read_bytes()))
+ i=5;entry=None;cap_end=None;mode_end=None
+ while i<len(words):
+  count,op=words[i]>>16,words[i]&0xffff
+  if op==17:cap_end=i+count
+  if op==15:entry=words[i+2]
+  if op==16:mode_end=i+count
+  i+=count
+ assert entry is not None and cap_end is not None and mode_end is not None
+ words[mode_end:mode_end]=[4<<16|16,entry,4460,32,4<<16|16,entry,4461,32]
+ words[cap_end:cap_end]=[2<<16|17,4465,2<<16|17,4466]
+ ftz=a.output/'ftz';ftz.mkdir(exist_ok=True)
+ (ftz/(name+'.spv')).write_bytes(struct.pack('<%dI'%len(words),*words))
+ subprocess.run(['spirv-val','--target-env','vulkan1.2',str(ftz/(name+'.spv'))],check=True)
 (a.output/'operations.json').write_text(json.dumps(ops,indent=2)+'\n')
 print(f'{len(ops)} operations x {len(cases)} inputs; integer transport/tag controls in each output')

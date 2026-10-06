@@ -15,12 +15,13 @@ small feature blocker in this audit. Optional features and per-title shader
 limits remain relevant. D3D12's higher shader models have concrete gaps.
 
 Rank is a suggested compiler-work priority, not measured title prevalence.
-The failure counts below are the audit's primary causes, not every shader that
-merely declares the capability.
+The original primary labels came from unsupported-capability classification.
+A width-aware follow-up corrected the denormal row: that label did not identify
+the instruction causing compilation to fail.
 
 | Rank | Gap / affected use | Apple9 exposure | CTS compiler evidence | Scope of a fix |
 | --- | --- | --- | --- | --- |
-| 1 | FP32 denorm modes; vkd3d's SM 6.2 gate (and thus its progression to 6.5+) | Both FP32 preserve and flush-to-zero properties false | 201 failures attributed to `DenormFlushToZero`; some shaders declaring float-control capabilities compile, which does not validate their numerical behavior | Arithmetic flushes denorms, while min/max/sign can pass them through. FTZ needs per-operation handling; preservation also needs a complete strategy. Not a feature-bit flip. |
+| 1 | FP32 denorm modes; vkd3d's SM 6.2 gate (and thus its progression to 6.5+) | Both FP32 preserve and flush-to-zero properties false | The earlier 201 `DenormFlushToZero` labels were misattributed: all 201 modules also require unsupported FP64. All 579 FTZ32 entry identities without FP64 compile; execution is unvalidated | Arithmetic flushes denorms, while min/max and sign-bit operations can pass them through. FTZ needs per-operation handling; preservation also needs a complete strategy. Not a feature-bit flip. |
 | 2 | Buffer int64 atomics and linear compute derivatives; SM 6.6 | Both false; image/shared int64 atomics also false | 920 primary `Int64Atomics` failures; 24 linear and 60 quad derivative failures; 2,892 image-int64 failures are a separate optional capability | Memory atomic semantics and derivative lane/workgroup mapping need implementation and execution tests. Runtime SM 6.6 requires buffer atomics, not all the stronger profile's atomic features. |
 | 3 | Wide graphics interfaces in individual D3D11/D3D12 shaders | VS/GS/TES output and FS input limited to 96 user components | 8 stage-I/O and 5 stage-output cases exceed advertised limits | Generalize varying transport/layout with hardware validation; no evidence here that a particular title hits this limit. |
 | 4 | Double precision, optional D3D11/D3D12 shader feature | `shaderFloat64` false | 7,468 primary `Float64` failures | General FP64 lowering/emulation; not a common DXVK initialization requirement. |
