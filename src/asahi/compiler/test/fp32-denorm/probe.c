@@ -87,8 +87,13 @@ main(int argc, char **argv)
       .shaderBufferFloat32AtomicAdd = VK_TRUE,
    };
    const char *atomic_ext = VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME;
+   VkPhysicalDeviceShaderFloat16Int8Features half_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
+      .shaderFloat16 = VK_TRUE,
+   };
    VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR derivative_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR,
+      .pNext = strstr(argv[1], "fp16_") ? &half_features : NULL,
       .computeDerivativeGroupLinear = VK_TRUE,
    };
    const char *derivative_ext = VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME;

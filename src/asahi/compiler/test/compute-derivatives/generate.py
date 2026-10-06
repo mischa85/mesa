@@ -11,7 +11,7 @@ shapes = [(1,1,4), (2,2,1), (2,6,1), (3,4,1), (20,1,1),
           (4,4,4), (8,8,1), (1,1,64), (32,32,1)]
 ops = ["dFdx", "dFdy", "dFdxFine", "dFdyFine", "dFdxCoarse", "dFdyCoarse", "lane"]
 cases = []
-for shape in shapes:
+for shape, half in [(s, False) for s in shapes] + [((4,4,1), True), ((8,8,1), True)]:
     threads = shape[0] * shape[1] * shape[2]
     inputs = []
     for group in range(3):
@@ -20,12 +20,16 @@ for shape in shapes:
             inputs += [bits, lane, 0, 0xa5120000 + len(inputs)//4]
     shape_name = "_".join(map(str, shape))
     (a.output / (shape_name + ".bin")).write_bytes(struct.pack("<%dI" % len(inputs), *inputs))
-    for op in ops:
-        name = op + "_" + shape_name
+    for op in (ops[:-1] if half else ops):
+        name = ("fp16_" if half else "") + op + "_" + shape_name
         expr = "float(gl_SubgroupInvocationID)" if op == "lane" else op + "(uintBitsToFloat(v.x))"
+        if half:
+            expr = "float(" + op + "(float16_t(uintBitsToFloat(v.x))))"
+        half_extension = "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require" if half else ""
         source = f"""#version 450
 #extension GL_NV_compute_shader_derivatives : require
 #extension GL_KHR_shader_subgroup_basic : require
+{half_extension}
 layout(local_size_x={shape[0]},local_size_y={shape[1]},local_size_z={shape[2]}) in;
 layout(derivative_group_linearNV) in;
 layout(set=0,binding=0,std430) readonly buffer In {{ uvec4 input_data[]; }};
@@ -48,6 +52,10 @@ void main() {{
                 lo = base if "Coarse" in op else base + (x if "dy" in op else 2*y)
                 hi = lo + (2 if "dy" in op else 1)
                 val = lane % 32 if op == "lane" else hi*hi-lo*lo
+                if half:
+                    def f16(v):
+                        return struct.unpack("<e", struct.pack("<e", float(v)))[0]
+                    val = f16(f16(hi*hi + 100*group) - f16(lo*lo + 100*group))
                 expected.append(struct.unpack("<I", struct.pack("<f", float(val)))[0])
         cases.append(dict(name=name, shape=shape, threads=threads, input=shape_name+".bin", expected=expected))
 (a.output / "cases.json").write_text(json.dumps(cases) + "\n")
