@@ -22,7 +22,9 @@ for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
     footprints = [('axis', (1,0,0), (0,1,0))]
     if a.extended:
         footprints = [('elongated', (2,0,0), (0,1,0)),
-                      ('rotated', (.8,.6,0), (-.6,.8,0)),
+                      # Binary-exact coordinates keep the analytic control
+                      # from straddling a Q6 LOD boundary after subtraction.
+                      ('rotated', (.75,1,0), (-1,.75,0)),
                       ('skew', (1,0,0), (.8,.6,0)),
                       ('depth', (.6,0,.8), (0,.8,.6))]
     for footprint, footprint_dx, footprint_dy in footprints:
