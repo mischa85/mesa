@@ -103,6 +103,26 @@ input forwarding remained active. Normal compression is enabled and shader
 caches are disabled. No system driver installation, kernel change or reset was
 needed. Hardware access uses exclusive mini leases.
 
+### Shared NIR folding regression
+
+Because the folding corrections above change common NIR, the same driver was
+also run on integration-next's focused native lists (normal, forced spill,
+memory and robust descriptor; two jobs, 60-second timeout, compression on,
+cache off, `AGX_SPILL_COALESCE=1`). Results match the integration-next
+`a852a6c55a44` native baseline case for case:
+
+| List | Pass | Skip | Changed statuses |
+| --- | ---: | ---: | ---: |
+| normal | 463 | 1 | 0 |
+| forced spill | 139 | 1 | 0 |
+| memory | 1,034 | 1,019 | 0 |
+| robust descriptor | 915 | 400 | 0 |
+| Total | **2,551** | **1,421** | **0** |
+
+There are no failures, expected failures or flakes, and the kernel journal has
+no new entries for the run. Comparison:
+`artifacts/compute-derivative-query-20261006/regression-compare.json`.
+
 ## Reproduction and provenance
 
 Workspace evidence is in `artifacts/compute-derivative-query-20261006/`:
