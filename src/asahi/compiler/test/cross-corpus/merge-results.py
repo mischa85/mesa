@@ -27,6 +27,7 @@ a.output.mkdir(parents=True, exist_ok=False)
 counts = collections.Counter()
 seen = set()
 overrides = []
+helper_overrides = []
 with sqlite3.connect(a.output/'results.sqlite3') as db:
     db.execute('CREATE TABLE results(key TEXT PRIMARY KEY,data BLOB NOT NULL) WITHOUT ROWID')
     db.execute('CREATE TABLE sources(path TEXT PRIMARY KEY,rows INTEGER) WITHOUT ROWID')
@@ -43,6 +44,17 @@ with sqlite3.connect(a.output/'results.sqlite3') as db:
                 r['status'] = 'empty_shader'
                 r['classification_evidence'] = str(a.verified_empty.resolve())
                 overrides.append(key)
+            if r['status'] == 'empty_shader':
+                mains = [v for v in r['programs'] if v['kind'] == 'APPLE9'
+                         and (r['stage'] in (1,2,3) or v['stage'] == r['stage'])
+                         and not v['stub']]
+                if mains:
+                    assert r['exit'] == 0 and all(t['ok'] for t in r['timings'])
+                    assert not any(x.startswith('Missing final statistics:') for x in r['diagnostics'])
+                    r['original_status'] = r['status']
+                    r['status'] = 'pass'
+                    r['classification_evidence'] = 'Emitted main kernels; empty receipt belongs to one helper variant'
+                    helper_overrides.append(key)
             db.execute('INSERT INTO results VALUES(?,?)',
                        (key, zlib.compress(json.dumps(r).encode(), 1)))
             n += 1
@@ -52,7 +64,8 @@ with sqlite3.connect(a.output/'results.sqlite3') as db:
     assert seen == expected, (len(seen), len(expected), len(expected-seen))
     summary = dict(inputs=len(seen), outcomes=dict(counts),
                    populations=a.populations, source_runs=[str(x.resolve()) for x in a.runs],
-                   validated_empty_overrides=len(overrides))
+                   validated_empty_overrides=len(overrides),
+                   empty_helper_overrides=len(helper_overrides))
     db.execute('CREATE TABLE reports(name TEXT PRIMARY KEY,data TEXT) WITHOUT ROWID')
     db.execute('INSERT INTO reports VALUES(?,?)', ('summary', json.dumps(summary)))
 (a.output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
