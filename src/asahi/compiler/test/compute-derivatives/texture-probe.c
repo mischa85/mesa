@@ -36,8 +36,8 @@ read_file(const char *name, size_t *size)
 int
 main(int argc, char **argv)
 {
-   if (argc != 11) {
-      fprintf(stderr, "usage: %s shader.spv inputs.bin dimension threads bias min max base aniso nearest\n", argv[0]);
+   if (argc != 11 && argc != 12) {
+      fprintf(stderr, "usage: %s shader.spv inputs.bin dimension threads bias min max base aniso nearest [view-min]\n", argv[0]);
       return 2;
    }
    const char *dim = argv[3];
@@ -48,6 +48,9 @@ main(int argc, char **argv)
    float bias = strtof(argv[5], NULL), min_lod = strtof(argv[6], NULL);
    float max_lod = strtof(argv[7], NULL), aniso = strtof(argv[9], NULL);
    unsigned base_level = strtoul(argv[8], NULL, 0);
+   bool view_min_enabled = argc == 12;
+   float view_min = view_min_enabled ? strtof(argv[11], NULL) : 0;
+   bool null_image = getenv("PROBE_NULL_IMAGE") != NULL;
    unsigned layers = cube ? (array ? 12 : 6) : (array ? 2 : 1);
    if (!local_threads || base_level >= 6)
       return 2;
@@ -60,6 +63,7 @@ main(int argc, char **argv)
    size_t output_size = input_size * 2;
    VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
                             .pApplicationName = "Apple9 exact-bit compute probe",
+                            .pEngineName = view_min_enabled ? "vkd3d" : NULL,
                             .apiVersion = VK_API_VERSION_1_2};
    VkInstance inst;
    CK(vkCreateInstance(
@@ -93,7 +97,27 @@ main(int argc, char **argv)
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR,
       .computeDerivativeGroupLinear = VK_TRUE,
    };
-   const char *derivative_ext = VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME;
+   VkPhysicalDeviceImageViewMinLodFeaturesEXT view_min_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_VIEW_MIN_LOD_FEATURES_EXT,
+      .minLod = VK_TRUE,
+   };
+   VkPhysicalDeviceRobustness2FeaturesKHR robustness = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_KHR,
+      .nullDescriptor = VK_TRUE,
+   };
+   if (view_min_enabled)
+      derivative_features.pNext = &view_min_features;
+   if (null_image) {
+      robustness.pNext = derivative_features.pNext;
+      derivative_features.pNext = &robustness;
+   }
+   const char *extensions[] = {VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
+                              NULL, NULL};
+   unsigned extension_count = 1;
+   if (view_min_enabled)
+      extensions[extension_count++] = VK_EXT_IMAGE_VIEW_MIN_LOD_EXTENSION_NAME;
+   if (null_image)
+      extensions[extension_count++] = VK_KHR_ROBUSTNESS_2_EXTENSION_NAME;
    float priority = 1;
    VkDevice dev;
    CK(vkCreateDevice(
@@ -103,8 +127,8 @@ main(int argc, char **argv)
          .pNext = &derivative_features,
          .pEnabledFeatures = &(VkPhysicalDeviceFeatures){
             .samplerAnisotropy = aniso > 1, .imageCubeArray = cube && array},
-         .enabledExtensionCount = 1,
-         .ppEnabledExtensionNames = &derivative_ext,
+         .enabledExtensionCount = extension_count,
+         .ppEnabledExtensionNames = extensions,
          .queueCreateInfoCount = 1,
          .pQueueCreateInfos =
             &(VkDeviceQueueCreateInfo){
@@ -173,8 +197,13 @@ main(int argc, char **argv)
    }, NULL, &image_mem));
    CK(vkBindImageMemory(dev, image, image_mem, 0));
    VkImageView view;
+   VkImageViewMinLodCreateInfoEXT view_min_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_MIN_LOD_CREATE_INFO_EXT,
+      .minLod = base_level + view_min,
+   };
    CK(vkCreateImageView(dev, &(VkImageViewCreateInfo){
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = image,
+      .pNext = view_min_enabled ? &view_min_info : NULL,
       .viewType = cube ? (array ? VK_IMAGE_VIEW_TYPE_CUBE_ARRAY : VK_IMAGE_VIEW_TYPE_CUBE) :
          axes == 1 ? (array ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D) :
          axes == 3 ? VK_IMAGE_VIEW_TYPE_3D :
@@ -244,6 +273,8 @@ main(int argc, char **argv)
          .pBufferInfo = &infos[i]};
    }
    VkDescriptorImageInfo image_info = {sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+   if (null_image)
+      image_info.imageView = VK_NULL_HANDLE;
    writes[2] = (VkWriteDescriptorSet){
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = set, .dstBinding = 2, .descriptorCount = 1,

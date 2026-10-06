@@ -9,8 +9,11 @@ p.add_argument('--probe', type=Path, required=True)
 p.add_argument('--icd', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--dimension', nargs='*')
+p.add_argument('--null-image', action='store_true')
 a = p.parse_args()
 env = dict(os.environ, VK_DRIVER_FILES=str(a.icd.resolve()), HK_EXPERIMENTAL_APPLE9='1', MESA_SHADER_CACHE_DISABLE='true')
+env.pop('PROBE_NULL_IMAGE', None)
+if a.null_image: env['PROBE_NULL_IMAGE'] = '1'
 for k in ['ASAHI_MESA_DEBUG','AGX_MESA_DEBUG','AGX_APPLE9_STATS','HK_PERFTEST']:
     env.pop(k, None)
 results = []
@@ -21,6 +24,7 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
     cmd = [str(a.probe.resolve()), str(a.directory/f'{name}.spv'), str(a.directory/f'{name}.bin'),
            case['dim'], str(case['threads']), str(case['bias']), str(case['min_lod']),
            str(case['max_lod']), str(case['base']), str(case['aniso']), str(int(case['nearest']))]
+    if case.get('view_min') is not None: cmd.append(str(case['view_min']))
     proc = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
     rows = []
     for line in proc.stdout.splitlines():
@@ -41,9 +45,11 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
         if abs(implicit-explicit) > .002: failures.append('gradient control')
         # Every mip is tagged with its physical level plus one. Query and
         # sampling must agree even where anisotropic selection is variable.
-        if abs(implicit-(qx+case['base']+1)) > .04: failures.append('query/sample agreement')
+        if a.null_image:
+            if [implicit,explicit,qx,qy] != [0.,0.,0.,0.]: failures.append('null descriptor')
+        elif abs(implicit-(qx+case['base']+1)) > .04: failures.append('query/sample agreement')
         # Only the isotropic arms have an implementation-independent oracle.
-        if case['aniso'] == 1:
+        if case['aniso'] == 1 and not a.null_image:
             if abs(implicit-case['expected_sample']) > .04: failures.append('sample reference')
             if abs(explicit-case['expected_sample']) > .04: failures.append('explicit reference')
             if abs(qx-case['expected_query'][0]) > .04: failures.append('clamped query')

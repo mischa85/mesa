@@ -6,6 +6,7 @@ from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('output', type=Path)
 p.add_argument('--extended', action='store_true', help='rotated, unequal, skew, and depth gradients')
+p.add_argument('--view-min', type=float, help='view-relative minimum LOD')
 a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 cases = []
@@ -88,10 +89,13 @@ for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
                     rho = max(math.sqrt(sum(x*x for x in g[:spatial])) for g in (footprint_dx, footprint_dy))
                     raw = lod + math.log2(rho) + bias if lod is not None else None
                     clamped = lo if raw is None else max(lo, min(raw, hi, 5-base))
+                    if a.view_min is not None:
+                        clamped = max(clamped, a.view_min)
                     if nearest:
                         clamped = math.floor(clamped + .5)
                     cases.append(dict(name=name,dim=dim,shape=shape,threads=threads,count=3*threads,
                         bias=bias,min_lod=lo,max_lod=hi,base=base,aniso=aniso,lod=lod,nearest=nearest,
+                        view_min=a.view_min,
                         expected_sample=base+1+clamped,expected_query=[clamped,raw],
                         spirv_sha256=hashlib.sha256(spv.read_bytes()).hexdigest(),
                         input_sha256=hashlib.sha256((a.output/f'{name}.bin').read_bytes()).hexdigest()))
