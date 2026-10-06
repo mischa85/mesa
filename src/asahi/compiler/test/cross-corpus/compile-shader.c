@@ -13,24 +13,27 @@ static int compile(VkDevice d, PFN_vkCreateShadersEXT create,
  FILE *f=fopen(path,"r");if(!f)return 2;
  char binary[4096],entry[256];unsigned stage,push,n;
  if(fscanf(f,"%4095s %u %255s %u %u",binary,&stage,entry,&push,&n)!=5){fclose(f);return 2;}
- VkDescriptorSetLayoutBinding bindings[16][128]={0};unsigned counts[16]={0},sets=0;
+ VkDescriptorSetLayoutBinding *bindings[8]={0};unsigned counts[8]={0},sets=0;
+ if(n>100000){fclose(f);return 2;}
  for(unsigned j=0;j<n;j++) {
   unsigned s,b,t,c;
-  if(fscanf(f,"%u %u %u %u",&s,&b,&t,&c)!=4||s>=16||counts[s]>=128){fclose(f);return 2;}
+  if(fscanf(f,"%u %u %u %u",&s,&b,&t,&c)!=4||s>=8){fclose(f);return 2;}
+  if(!bindings[s]) bindings[s]=calloc(n,sizeof(*bindings[s]));
+  if(!bindings[s]){fclose(f);return 2;}
   bindings[s][counts[s]++]=(VkDescriptorSetLayoutBinding){.binding=b,.descriptorType=t,.descriptorCount=c,.stageFlags=stage};
   if(sets<=s)sets=s+1;
  }
- fclose(f);VkDescriptorSetLayout layouts[16]={0};
+ fclose(f);VkDescriptorSetLayout layouts[8]={0};
  for(unsigned i=0;i<sets;i++) CHECK(vkCreateDescriptorSetLayout(d,&(VkDescriptorSetLayoutCreateInfo){.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,.bindingCount=counts[i],.pBindings=bindings[i]},0,&layouts[i]));
  f=fopen(binary,"rb");if(!f)return 2;fseek(f,0,SEEK_END);size_t size=ftell(f);rewind(f);void *code=malloc(size);
  if(!code||fread(code,1,size,f)!=size){fclose(f);return 2;}fclose(f);
  VkPushConstantRange range={.stageFlags=stage,.size=push};VkShaderEXT shader=0;
- VkShaderCreateInfoEXT info={.sType=VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,.stage=stage,.nextStage=stage==VK_SHADER_STAGE_VERTEX_BIT?VK_SHADER_STAGE_FRAGMENT_BIT:0,.codeType=VK_SHADER_CODE_TYPE_SPIRV_EXT,.codeSize=size,.pCode=code,.pName=entry,.setLayoutCount=sets,.pSetLayouts=layouts,.pushConstantRangeCount=push?1:0,.pPushConstantRanges=&range};
+ VkShaderCreateInfoEXT info={.sType=VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,.stage=stage,.nextStage=stage==VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT?VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:((stage&(VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT|VK_SHADER_STAGE_GEOMETRY_BIT))?VK_SHADER_STAGE_FRAGMENT_BIT:0),.codeType=VK_SHADER_CODE_TYPE_SPIRV_EXT,.codeSize=size,.pCode=code,.pName=entry,.setLayoutCount=sets,.pSetLayouts=layouts,.pushConstantRangeCount=push?1:0,.pPushConstantRanges=&range};
  struct timespec a,b;clock_gettime(CLOCK_THREAD_CPUTIME_ID,&a);VkResult result=create(d,1,&info,0,&shader);clock_gettime(CLOCK_THREAD_CPUTIME_ID,&b);
  fprintf(stderr,"CORPUS_CREATE result=%d cpu_ns=%llu\n",result,(unsigned long long)((b.tv_sec-a.tv_sec)*1000000000ll+b.tv_nsec-a.tv_nsec));
  if(shader) destroy(d,shader,0);
  free(code);
- for(unsigned i=0;i<sets;i++) vkDestroyDescriptorSetLayout(d,layouts[i],0);
+ for(unsigned i=0;i<sets;i++){vkDestroyDescriptorSetLayout(d,layouts[i],0);free(bindings[i]);}
  return result==VK_SUCCESS?0:1;
 }
 int main(int argc,char **argv) {

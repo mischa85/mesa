@@ -42,8 +42,12 @@ source hashes, commands, and generated-table origin are recorded.
 
 ## Current coverage limits
 
-Shader-object replay currently covers vertex, fragment and compute stages.
-Other stages are an explicit harness coverage gap, not a compiler rejection.
+Shader-object replay covers vertex, fragment and compute. The private common
+front-end adapter also compiles standalone geometry and tessellation with the
+normal lowering functions and default graphics key. All resulting compute and
+rasterization kernels count toward their original API stage. Mesh and ray
+tracing are outside this driver's advertised stage support. Layouts exceeding
+its eight descriptor sets or 256 push-constant bytes are explicitly excluded.
 Bare SPIR-V uses the existing eager-variant path's default graphics state.
 Recorded Fossilize pipelines must be reported separately, with their recorded
 state; the two populations must not be conflated. The conditional shader-db GL
@@ -60,3 +64,21 @@ The initial public comparison identifies sample/load hoisting as a source of
 large GPR increases in blur shaders, and small instruction increases in two
 Willems shaders. Turning it off improves both public populations' static totals;
 this alone does not establish a GPU runtime gain or justify a final policy.
+
+`extract-cts.py` streams completed chunks into a deduplicated SPIR-V corpus,
+retains named aliases in compressed form and deletes only consumed raw chunks.
+`refresh-metadata.py` creates a fresh replay view and classifies device limits
+separately from reflection failures. Full replay may proceed in frozen
+populations while extraction continues; `run.py --exclude-results RESULTS`
+then handles the remainder without repeating earlier shader identities. Worker
+processes restart every 256 shaders to bound memory and core dumps are disabled.
+
+`CORPUS_FINAL` receipts select statistics matching the actual main and preamble
+binary sizes. Discarded preamble attempts are not included in totals. Missing
+statistics, compiler failures, crashes and timeouts remain distinct outcomes.
+
+The optional `build-compiler.py --pressure-gate` overlay is a private scheduling
+experiment. It rejects intra-block hoisting when NIR scalar-word pressure grows.
+It accounts for live-out and following-if uses, but does not model physical
+operand constraints and is not a physical-register guarantee. Nothing from
+this experiment is installed or enabled in the production compiler.

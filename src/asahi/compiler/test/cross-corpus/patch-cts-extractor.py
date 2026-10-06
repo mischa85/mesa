@@ -21,6 +21,7 @@ s=s.replace('registryWriter.addProgram(progIter->id, *progIter->binary);','''{
                     std::cout << "CORPUS_PROGRAM " << (corpusChunk - 1) << " " << hex << " "
                               << progIter->id.testCasePath << " " << progIter->id.programName << "\\n";
                 }''')
+s=s.replace('            registryWriter.write();', '            registryWriter.write();\n            std::cout << "CORPUS_CHUNK_DONE " << (corpusChunk - 1) << std::endl;')
 # Avoid large per-shader logs on successful compilation; failed diagnostics remain.
 f=d/'vktBuildPrograms.cpp';f.write_text(s)
 commands=subprocess.check_output(['ninja','-t','commands','vk-build-programs'],cwd=b,text=True).splitlines();entry=next(c for c in commands if 'vktBuildPrograms.cpp.o ' in c or 'vktBuildPrograms.cpp.o -c' in c)

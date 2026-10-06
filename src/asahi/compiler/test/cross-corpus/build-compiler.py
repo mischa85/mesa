@@ -6,7 +6,7 @@ Only compact statistics and timing are added to the private source snapshot.
 """
 import argparse,concurrent.futures,hashlib,json,shlex,subprocess,tarfile,io
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--mesa',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--ref',required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--mesa',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--ref',required=True);p.add_argument('--pressure-gate',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args()
 r=a.mesa.resolve();b=a.build.resolve();d=a.output.resolve();d.mkdir(parents=True,exist_ok=False)
 rev=subprocess.check_output(['git','rev-parse',a.ref],cwd=r,text=True).strip()
 raw=subprocess.check_output(['git','archive',rev,'src/asahi'],cwd=r)
@@ -40,6 +40,37 @@ extra='''      unsigned swaps = 0;
 c=c.replace(anchor,anchor+'\n'+extra)
 c=c.replace('gprs=%u scratch=%u\\n",','gprs=%u scratch=%u swaps=%u stub=%u\\n",',1)
 c=c.replace('              lower.program.scratch_size);','              lower.program.scratch_size, swaps, nir->info.name && !strcmp(nir->info.name,"stub VS"));',1)
+if a.pressure_gate:
+ header=Path(__file__).resolve().parent/'hoist-pressure.h'
+ c=c.replace('struct apple9_hoist_state {', '#include "'+str(header)+'"\nstruct apple9_hoist_state {')
+ start=c.index('static bool\napple9_hoist_samples(');end=c.index('/* Compiler dumps',start);part=c[start:end]
+ part=part.replace('   unsigned total = nir_index_instrs(impl);','   nir_metadata_require(impl, nir_metadata_live_defs);\n   unsigned total = nir_index_instrs(impl);')
+ part=part.replace('   bool progress = false;', '''   unsigned *width = rzalloc_array(ctx, unsigned, impl->ssa_alloc);
+   nir_foreach_block(b, impl) {
+      nir_foreach_instr(i, b)
+         nir_foreach_def(i, corpus_record_width, width);
+   }
+   unsigned live_words = BITSET_WORDS(impl->ssa_alloc);
+   BITSET_WORD *live = rzalloc_array(ctx, BITSET_WORD, live_words);
+   nir_instr **original = ralloc_array(ctx, nir_instr *, total + 1);
+   bool progress = false;''')
+ part=part.replace('static bool\napple9_hoist_samples(', 'static bool apple9_has_samples(nir_shader *nir);\nstatic bool\napple9_hoist_samples(')
+ part=part.replace('   if (!limit)', '   if (!limit || !apple9_has_samples(nir))')
+ part=part.replace('               progress = true;', '               block_progress = true;')
+ part=part.replace('      s.count = 0;', '''      s.count = 0;
+      bool block_progress = false;
+      unsigned original_count = 0;
+      nir_foreach_instr(i, block) {
+         if (i->type != nir_instr_type_phi && i->type != nir_instr_type_jump)
+            original[original_count++] = i;
+      }''')
+ part=part.replace('      /* Rebuild the block:', '''      if (!block_progress)\n         continue;\n      assert(original_count == s.count);
+      if (corpus_schedule_pressure(block, s.order, s.count, width, live, live_words) >
+          corpus_schedule_pressure(block, original, original_count, width, live, live_words))
+         continue;
+
+      progress = true;\n      /* Rebuild the block:''')
+ c=c[:start]+part+c[end:]
 c='#include <time.h>\n'+c
 for name in ['agx_compile_apple9_tiny','apple9_compile_graphics']:
  pos=c.index(name+'(nir_shader *nir');beg=c.rfind('\n',0,pos)+1;brace=c.index('{',pos);sig=c[beg:brace];depth=1;j=brace+1
@@ -48,7 +79,7 @@ for name in ['agx_compile_apple9_tiny','apple9_compile_graphics']:
   if c[j]=='}':depth-=1
   j+=1
  args='nir,out,profile,reason_out' if name.endswith('tiny') else 'nir,out,layout,producer,blend,nr_targets,reason'
- wrapper='\n'+('bool\n' if name.endswith('tiny') else 'static bool\n')+sig+'{struct timespec a,b;unsigned stage=nir->info.stage;clock_gettime(CLOCK_THREAD_CPUTIME_ID,&a);bool ok='+name+'_corpus_impl('+args+');clock_gettime(CLOCK_THREAD_CPUTIME_ID,&b);fprintf(stderr,"CORPUS_TIME stage=%u cpu_ns=%llu ok=%u\\n",stage,(unsigned long long)((b.tv_sec-a.tv_sec)*1000000000ll+b.tv_nsec-a.tv_nsec),ok);return ok;}\n'
+ wrapper='\n'+('bool\n' if name.endswith('tiny') else 'static bool\n')+sig+'{struct timespec a,b;unsigned stage=nir->info.stage;clock_gettime(CLOCK_THREAD_CPUTIME_ID,&a);bool ok='+name+'_corpus_impl('+args+');clock_gettime(CLOCK_THREAD_CPUTIME_ID,&b);if(ok)fprintf(stderr,"CORPUS_FINAL stage=%u main_bytes=%u preamble_bytes=%u nr_gprs=%u\\n",stage,out->info.main_size,out->info.apple9_preamble_size,out->info.nr_gprs);fprintf(stderr,"CORPUS_TIME stage=%u cpu_ns=%llu ok=%u\\n",stage,(unsigned long long)((b.tv_sec-a.tv_sec)*1000000000ll+b.tv_nsec-a.tv_nsec),ok);return ok;}\n'
  c=c[:j]+wrapper+c[j:];c=c[:pos]+c[pos:].replace(name+'(',name+'_corpus_impl(',1)
 c=c.replace('bool\nagx_compile_apple9_tiny_corpus_impl','static bool\nagx_compile_apple9_tiny_corpus_impl');cpath.write_text(c)
 cs=json.loads((b/'compile_commands.json').read_text());members=subprocess.check_output(['ar','t',str(b/'src/asahi/compiler/libasahi_compiler.a')],text=True).splitlines();commands=[]

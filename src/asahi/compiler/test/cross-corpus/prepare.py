@@ -38,7 +38,8 @@ def reflect(data):
    end=0
    for j,v in enumerate(x):
     md=member[(t,j)];z=size(v)
-    if 7 in md and types[v][0]==24:z=md[7][0]*types[v][1][1]
+    if 7 in md and types[v][0]==24:
+     matrix=types[v][1];z=md[7][0]*(types[matrix[0]][1][1] if 4 in md else matrix[1])
     end=max(end,md.get(35,[end])[0]+z)
    return end
   raise ValueError('unknown block size type '+str(op))
@@ -85,8 +86,8 @@ def main():
     if digest in seen:row.update(status='duplicate',canonical=seen[digest]);counts['duplicates']+=1;manifest.write(json.dumps(row)+'\n');continue
     seen[digest]=row['source'];spv=out/'spv'/(digest+'.spv');spv.write_bytes(data);info=reflect(data);row.update(info);prepared=[];unsupported=[]
     for model,name in info['entries']:
-     if model not in (0,4,5):unsupported.append((model,name));continue
-     if any(s>=16 or c>65536 for s,b,t,c in info['bindings']) or info['push']>256:raise ValueError('layout exceeds runner limits')
+     if model not in (0,1,2,3,4,5):unsupported.append((model,name));continue
+     if any(s>=8 or c>65536 for s,b,t,c in info['bindings']) or info['push']>256:raise ValueError('layout exceeds runner limits')
      meta=out/'meta'/(digest+'-'+str(model)+'.txt');meta.write_text(f'{spv} {STAGES[model]} {name} {info["push"]} {len(info["bindings"])}\n'+''.join('%d %d %d %d\n'%tuple(b) for b in info['bindings']));prepared.append(str(meta))
     row.update(status='prepared' if prepared else 'unsupported_stage',metadata=prepared,unsupported_entries=unsupported);counts['unique']+=1;counts['prepared_entries']+=len(prepared)
    except Exception as e:row.update(status='reflection_failure',error=str(e))

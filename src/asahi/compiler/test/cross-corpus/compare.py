@@ -11,7 +11,7 @@ for l in a.manifest.open():
  if r.get('status')!='duplicate':names[r.get('sha256')]=r['source']
 metrics=['instructions','copies','swaps','saves','fills','gprs','scratch'];rows=[];totals={};stages={};outcomes=collections.Counter()
 def values(r,kind):
- ps=[p for p in r['programs'] if p['kind']==kind and p['stage']==r['stage'] and not p['stub']]
+ ps=[p for p in r['programs'] if p['kind']==kind and (r['stage'] in (1,2,3) or p['stage']==r['stage']) and not p['stub']]
  return {k:sum(p[k] for p in ps) for k in metrics}|{'programs':len(ps)}
 for key in x:
  b,c=x[key],y[key];outcomes[b['status']+' -> '+c['status']]+=1
@@ -24,7 +24,7 @@ for key in x:
    for table in [totals,stages.setdefault(str(b['stage']),{})]:
     t=table.setdefault(name,dict(before=0,after=0,improved=0,regressed=0));t['before']+=bv[metric];t['after']+=cv[metric];t['improved']+=cv[metric]<bv[metric];t['regressed']+=cv[metric]>bv[metric]
  for label,r in [('before',b),('after',c)]:
-  row['backend_cpu_ns_'+label]=sum(t['cpu_ns'] for t in r['timings'] if t['stage']==r['stage'])
+  row['backend_cpu_ns_'+label]=sum(t['cpu_ns'] for t in r['timings'] if (r['stage'] in (1,2,3) or t['stage']==r['stage']))
   row['create_cpu_ns_'+label]=r.get('create',{}).get('cpu_ns',0)
  rows.append(row)
 for table in [totals,*stages.values()]:
