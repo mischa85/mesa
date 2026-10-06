@@ -46,10 +46,11 @@ with (out/'results.jsonl').open('w') as output:
         if matches:current['programs'].append(matches[-1])
         else:current['diagnostics'].append('Missing final statistics: '+kind+' '+str(final))
        current['attempts']=[]
+      elif line.startswith('CORPUS_EMPTY '):current['empty']=True
       elif line.startswith('CORPUS_TIME '):current['timings'].append(fields(line))
       elif line.startswith('CORPUS_CREATE '):current['create']=fields(line)
       elif line.startswith('CORPUS_END '):
-       current['exit']=int(line.split()[-1]);mains=[x for x in current['programs'] if x['kind']=='APPLE9' and (current['stage'] in (1,2,3) or x['stage']==current['stage']) and not x['stub']];current['status']='compiler_failure' if current['exit'] or not all(x['ok'] for x in current['timings']) else 'pass' if mains and not any(x.startswith('Missing final statistics:') for x in current['diagnostics']) else 'missing_metrics';completed=current['index']+1;emit(current);current=None
+       current['exit']=int(line.split()[-1]);mains=[x for x in current['programs'] if x['kind']=='APPLE9' and (current['stage'] in (1,2,3) or x['stage']==current['stage']) and not x['stub']];current['status']='compiler_failure' if current['exit'] or not all(x['ok'] for x in current['timings']) else 'empty_shader' if current.get('empty') else 'pass' if mains and not any(x.startswith('Missing final statistics:') for x in current['diagnostics']) else 'missing_metrics';completed=current['index']+1;emit(current);current=None
       elif len(current['diagnostics'])<15:current['diagnostics'].append(line[:1000])
     rc=process.wait()
    except TimeoutError as e:failure=str(e);rc=process.wait()

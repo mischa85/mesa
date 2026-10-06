@@ -14,6 +14,7 @@ s=s.replace(old,'''if (!(getenv("CORPUS_DIRECT_PRERAST") && shader_count == 1 &&
              infos[0].stage == MESA_SHADER_TESS_EVAL)) &&
           hk_apple9_needs_deferral(shader_count, infos, state, features))''')
 s=s.replace('if (result != VK_SUCCESS && agx_get_compiler_debug())','if (result != VK_SUCCESS && (agx_get_compiler_debug() || getenv("CORPUS_DIRECT_PRERAST")))')
+s=s.replace('shader->b.info.stats.instrs = 1;', 'shader->b.info.stats.instrs = 1;\n         if (getenv("CORPUS_DIRECT_PRERAST")) fprintf(stderr, "CORPUS_EMPTY stage=5\\n");')
 f=d/'hk_shader.c';f.write_text(s);cs=json.loads((b/'compile_commands.json').read_text());v=next(c for c in cs if c['file'].endswith('/hk_shader.c'));cmd=[];skip=False
 for x in shlex.split(v['command']):
  if skip:skip=False;continue

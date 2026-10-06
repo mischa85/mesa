@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """Stream every CTS chunk into a deduplicated corpus, retaining named aliases."""
-import argparse,collections,gzip,hashlib,json,resource,shutil,subprocess,time
+import argparse,collections,gzip,hashlib,json,re,resource,shutil,subprocess,time
 from pathlib import Path
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
 from prepare import reflect,STAGES
 p=argparse.ArgumentParser();p.add_argument('--extractor',type=Path,required=True);p.add_argument('--data',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--case',default='dEQP-VK.*');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);out=a.output.resolve();raw=out/'raw';raw.mkdir();(out/'spv').mkdir();(out/'meta').mkdir();seen={};counts=collections.Counter();pending={};start=time.perf_counter();errors=[]
-cmd=[str(a.extractor.resolve()),'--deqp-case',a.case,'--dst-path',str(raw),'--target-vulkan-version','1.3','--validate-spv','--shadercache','disable','--log-filename','/dev/null']
+cmd=[str(a.extractor.resolve()),'--deqp-case',a.case,'--dst-path',str(raw),'--target-vulkan-version','1.3','--validate-spv','--shadercache','disable','--log-filename','/dev/null'];enumeration=None
 (out/'provenance.json').write_text(json.dumps(dict(command=cmd,extractor_sha256=hashlib.sha256(a.extractor.read_bytes()).hexdigest(),data_directory=str(a.data.resolve()),definition='all enumerated CTS initPrograms sources; validated SPIR-V; named duplicates retained',runtime_descriptor_count=256),indent=2)+'\n')
 with gzip.open(out/'extract.log.gz','wt',compresslevel=3) as log,gzip.open(out/'aliases.jsonl.gz','wt',compresslevel=3) as aliases,(out/'manifest.jsonl').open('w') as manifest:
  proc=subprocess.Popen(cmd,cwd=a.data,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace')
  for line in proc.stdout:
   log.write(line)
-  if line.startswith('CORPUS_PROGRAM '):
+  if m:=re.match(r'DONE: (\d+) passed, (\d+) failed, (\d+) not supported',line):
+   enumeration=dict(zip(['passed','failed','not_supported'],map(int,m.groups())))
+  elif line.startswith('CORPUS_PROGRAM '):
    _,chunk,sha,case,name=line.rstrip().split(' ',4);pending.setdefault(sha,[]).append((case,name));counts['program_instances']+=1
   elif line.startswith('CORPUS_INIT_SKIP '):counts['initialization_skips']+=1
   elif line.startswith('ERROR: '):counts['frontend_failures']+=1;errors.append(line.strip())
@@ -39,6 +41,6 @@ with gzip.open(out/'extract.log.gz','wt',compresslevel=3) as log,gzip.open(out/'
    status=dict(counts,elapsed_s=time.perf_counter()-start,complete=False);(out/'progress.json').write_text(json.dumps(status,indent=2)+'\n')
    if counts['chunks']%10==0:print(json.dumps(status),flush=True)
  rc=proc.wait()
-summary=dict(counts,elapsed_s=time.perf_counter()-start,process_exit=rc,complete=not pending and rc==0,errors=errors)
+summary=dict(counts,elapsed_s=time.perf_counter()-start,process_exit=rc,complete=not pending and enumeration is not None,enumeration=enumeration,all_frontends_passed=rc==0,errors=errors)
 (out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary),flush=True)
 raise SystemExit(rc)
