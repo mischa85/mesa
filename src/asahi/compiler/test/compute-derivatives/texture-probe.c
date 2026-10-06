@@ -36,8 +36,8 @@ read_file(const char *name, size_t *size)
 int
 main(int argc, char **argv)
 {
-   if (argc != 10) {
-      fprintf(stderr, "usage: %s shader.spv inputs.bin dimension threads bias min max base aniso\n", argv[0]);
+   if (argc != 11) {
+      fprintf(stderr, "usage: %s shader.spv inputs.bin dimension threads bias min max base aniso nearest\n", argv[0]);
       return 2;
    }
    const char *dim = argv[3];
@@ -186,7 +186,7 @@ main(int argc, char **argv)
    CK(vkCreateSampler(dev, &(VkSamplerCreateInfo){
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
       .magFilter = VK_FILTER_LINEAR, .minFilter = VK_FILTER_LINEAR,
-      .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .mipmapMode = atoi(argv[10]) ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR,
       .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
       .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
       .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,

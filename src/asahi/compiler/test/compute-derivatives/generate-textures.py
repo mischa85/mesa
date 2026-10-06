@@ -10,7 +10,9 @@ a.output.mkdir(parents=True, exist_ok=True)
 cases = []
 # Linear mip filtering keeps the query/reference continuous. A nonzero view
 # base distinguishes view-relative LOD from physical mip indices.
-configs = [(0., 0., 5., 0, 1.), (.5, 1., 3., 0, 1.), (-1., 0., 2., 1, 1.), (0., 0., 5., 0, 4.)]
+configs = [(0., 0., 5., 0, 1., False), (.5, 1., 3., 0, 1., False),
+           (-1., 0., 2., 1, 1., False), (0., 0., 5., 0, 4., False),
+           (.25, 0., 5., 0, 1., True)]
 for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
     array = dim.endswith('a')
     axes = 3 if dim.startswith(('cube', '3d')) else int(dim[0])
@@ -18,7 +20,7 @@ for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
     for shape in [(4,4,1), (20,1,1)]:
         threads = math.prod(shape)
         for lod in [-1., 1., 3.]:
-            for config, (bias, lo, hi, base, aniso) in enumerate(configs):
+            for config, (bias, lo, hi, base, aniso, nearest) in enumerate(configs):
                 name = f'{dim}_{threads}_lod{int(lod)}_s{config}'
                 scale = 2**lod / (32 >> base)
                 coords = []
@@ -68,8 +70,10 @@ void main() {{
                 subprocess.run(['spirv-val','--target-env','vulkan1.2',str(spv)],check=True)
                 raw = lod + bias
                 clamped = max(lo, min(raw, hi, 5-base))
+                if nearest:
+                    clamped = math.floor(clamped + .5)
                 cases.append(dict(name=name,dim=dim,shape=shape,threads=threads,count=3*threads,
-                    bias=bias,min_lod=lo,max_lod=hi,base=base,aniso=aniso,lod=lod,
+                    bias=bias,min_lod=lo,max_lod=hi,base=base,aniso=aniso,lod=lod,nearest=nearest,
                     expected_sample=base+1+clamped,expected_query=[clamped,raw],
                     spirv_sha256=hashlib.sha256(spv.read_bytes()).hexdigest(),
                     input_sha256=hashlib.sha256((a.output/f'{name}.bin').read_bytes()).hexdigest()))

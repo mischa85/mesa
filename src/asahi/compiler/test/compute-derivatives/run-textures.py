@@ -20,7 +20,7 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
     name = case['name']
     cmd = [str(a.probe.resolve()), str(a.directory/f'{name}.spv'), str(a.directory/f'{name}.bin'),
            case['dim'], str(case['threads']), str(case['bias']), str(case['min_lod']),
-           str(case['max_lod']), str(case['base']), str(case['aniso'])]
+           str(case['max_lod']), str(case['base']), str(case['aniso']), str(int(case['nearest']))]
     proc = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
     rows = []
     for line in proc.stdout.splitlines():
