@@ -7,8 +7,10 @@ class Pack:
  def __init__(self,path,writable=False):
   self.path=Path(path).resolve()
   self.db=sqlite3.connect(str(self.path) if writable else 'file:'+str(self.path)+'?mode=ro',uri=not writable)
-  self.db.execute('PRAGMA cache_size=-65536')
+  self.db.execute('PRAGMA cache_size=-262144')
   if writable:
+   self.db.execute('PRAGMA journal_mode=WAL')
+   self.db.execute('PRAGMA synchronous=NORMAL')
    self.db.executescript('''CREATE TABLE IF NOT EXISTS blobs(sha TEXT PRIMARY KEY,data BLOB NOT NULL) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY,sha TEXT,link TEXT,mode INTEGER,mtime_ns INTEGER,size INTEGER) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS entries(population TEXT,key TEXT,sha TEXT,model INTEGER,entry TEXT,push INTEGER,bindings TEXT,PRIMARY KEY(population,key)) WITHOUT ROWID;

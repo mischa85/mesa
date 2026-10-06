@@ -28,9 +28,11 @@ def timed_out(*_):
 signal.signal(signal.SIGALRM,timed_out)
 with sqlite3.connect(out/'results.sqlite3') as output:
  output.execute('PRAGMA journal_mode=WAL')
+ output.execute('PRAGMA synchronous=NORMAL')
  output.execute('CREATE TABLE IF NOT EXISTS results(key TEXT PRIMARY KEY,data BLOB NOT NULL) WITHOUT ROWID')
  def emit(row):
-  output.execute('INSERT INTO results VALUES(?,?)',(row['key'],zlib.compress(json.dumps(row).encode(),1)));output.commit();counts[row['status']]+=1
+  output.execute('INSERT INTO results VALUES(?,?)',(row['key'],zlib.compress(json.dumps(row).encode(),1)));counts[row['status']]+=1
+  if sum(counts.values())%64==0:output.commit()
  while offset<len(paths):
   pending=out/'pending.bin';batch={}
   with pending.open('wb') as f:
@@ -66,6 +68,7 @@ with sqlite3.connect(out/'results.sqlite3') as output:
    finally:signal.alarm(0)
   if current:
    current.update(status='timeout' if failure else 'crash',process_exit=rc,error=failure);completed=current['index']+1;emit(current)
+  output.commit()
   if completed==offset:raise RuntimeError('worker failed before any shader: '+str(rc))
   offset=completed
   if offset%1024==0:print('completed',offset,dict(counts),flush=True)
