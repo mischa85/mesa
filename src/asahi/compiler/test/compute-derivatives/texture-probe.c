@@ -86,7 +86,8 @@ main(int argc, char **argv)
            controls.shaderDenormFlushToZeroFloat32,
            controls.shaderDenormPreserveFloat32,
            controls.shaderSignedZeroInfNanPreserveFloat32);
-   if (!strstr(prop.properties.deviceName, "Apple M4"))
+   const char *expected_device = getenv("PROBE_DEVICE_SUBSTRING");
+   if (!strstr(prop.properties.deviceName, expected_device ?: "Apple M4"))
       return 2;
    VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR derivative_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """Mip-tagged compute samples and LOD queries with analytic gradient controls."""
-import argparse, json, math, struct, subprocess
+import argparse, hashlib, json, math, struct, subprocess
 from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('output', type=Path)
@@ -26,7 +26,7 @@ for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
                     lane = i % threads
                     x = .25 + (lane % 2) * scale
                     y = .25 + ((lane % 4) // 2) * scale
-                    layer = float((i // 4) % 2)
+                    layer = float(i % 2)  # Layer variation must not enter the gradients.
                     if dim.startswith('cube'):
                         c = [1., 2*y-1, 1-2*x, layer if array else 0.]
                     elif axes == 1:
@@ -70,6 +70,8 @@ void main() {{
                 clamped = max(lo, min(raw, hi, 5-base))
                 cases.append(dict(name=name,dim=dim,shape=shape,threads=threads,count=3*threads,
                     bias=bias,min_lod=lo,max_lod=hi,base=base,aniso=aniso,lod=lod,
-                    expected_sample=base+1+clamped,expected_query=[clamped,raw]))
+                    expected_sample=base+1+clamped,expected_query=[clamped,raw],
+                    spirv_sha256=hashlib.sha256(spv.read_bytes()).hexdigest(),
+                    input_sha256=hashlib.sha256((a.output/f'{name}.bin').read_bytes()).hexdigest()))
 (a.output / 'texture-cases.json').write_text(json.dumps(cases,indent=2)+'\n')
 print(f'Generated and validated {len(cases)} texture probes')
