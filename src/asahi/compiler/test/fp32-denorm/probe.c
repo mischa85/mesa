@@ -36,10 +36,14 @@ read_file(const char *name, size_t *size)
 int
 main(int argc, char **argv)
 {
-   if (argc != 3) {
-      fprintf(stderr, "usage: %s shader.spv inputs.bin\n", argv[0]);
+   if (argc != 3 && argc != 5) {
+      fprintf(stderr, "usage: %s shader.spv inputs.bin [--linear-derivatives local-threads]\n", argv[0]);
       return 2;
    }
+   bool derivatives = argc == 5 && !strcmp(argv[3], "--linear-derivatives");
+   unsigned local_threads = derivatives ? strtoul(argv[4], NULL, 0) : 32;
+   if ((argc == 5 && !derivatives) || !local_threads || local_threads > 1024)
+      return 2;
    size_t code_size, input_size;
    uint32_t *code = read_file(argv[1], &code_size);
    uint32_t *input = read_file(argv[2], &input_size);
@@ -47,7 +51,7 @@ main(int argc, char **argv)
       return 2;
    unsigned count = input_size / 16;
    VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-                            .pApplicationName = "Apple9 exact-bit denorm probe",
+                            .pApplicationName = "Apple9 exact-bit compute probe",
                             .apiVersion = VK_API_VERSION_1_2};
    VkInstance inst;
    CK(vkCreateInstance(
@@ -83,15 +87,20 @@ main(int argc, char **argv)
       .shaderBufferFloat32AtomicAdd = VK_TRUE,
    };
    const char *atomic_ext = VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME;
+   VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR derivative_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR,
+      .computeDerivativeGroupLinear = VK_TRUE,
+   };
+   const char *derivative_ext = VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME;
    float priority = 1;
    VkDevice dev;
    CK(vkCreateDevice(
       pd,
       &(VkDeviceCreateInfo){
          .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-         .pNext = atomic ? &atomics : NULL,
-         .enabledExtensionCount = atomic ? 1 : 0,
-         .ppEnabledExtensionNames = atomic ? &atomic_ext : NULL,
+         .pNext = atomic ? (void *)&atomics : derivatives ? (void *)&derivative_features : NULL,
+         .enabledExtensionCount = atomic || derivatives ? 1 : 0,
+         .ppEnabledExtensionNames = atomic ? &atomic_ext : derivatives ? &derivative_ext : NULL,
          .queueCreateInfoCount = 1,
          .pQueueCreateInfos =
             &(VkDeviceQueueCreateInfo){
@@ -247,7 +256,7 @@ main(int argc, char **argv)
    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &set,
                            0, 0);
    vkCmdPushConstants(cb, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &count);
-   vkCmdDispatch(cb, (count + 31) / 32, 1, 1);
+   vkCmdDispatch(cb, (count + local_threads - 1) / local_threads, 1, 1);
    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
    barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
