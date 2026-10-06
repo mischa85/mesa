@@ -15,6 +15,14 @@ query encoding. It returns zero in the existing compute experiments. Adding
 the query flag to a gradient sample did not produce query results; that
 experiment was removed in the previous series.
 
+In the failing linear CTS query cases, the 1D image width is 16. Coordinates
+alternate by 0.08 or 0.10 along the derivative group's x pair, with zero y
+derivative. These give footprints 1.28 and 1.6 texels and base LODs
+`log2(1.28) = 0.356144` and `log2(1.6) = 0.678072`. Nearest mip selection gives
+levels zero and one respectively. Returning raw LOD zero therefore fails both
+query variants, independently of the local workgroup shape. This is why
+changing the linear group into a local-X/local-Y quad is not the correction.
+
 The new WIP calculates the query from ordinary NIR derivatives, spatial view
 dimensions, projected cube gradients, sampler anisotropy, bias, clamping, and
 mip selection. Those derivatives use the existing linear shuffle lowering.
