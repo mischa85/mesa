@@ -136,8 +136,8 @@ before the fix. The affected fragment shader now has 3,587 instructions,
 zero SAVE/FILL instructions and zero scratch, versus 504 SAVE, 504 FILL and
 2,016 scratch bytes before the fix.
 
-Validation: 263 non-compiler unit tests and 34 focused compiler tests pass.
-The full unit invocation still stops at the previously reproduced unrelated
+At that revision, 263 non-compiler unit tests and 34 focused compiler tests
+passed. The full unit invocation stopped at the previously reproduced unrelated
 `Apple9Compiler.WritableSinkPointer` NIR divergence assertion. All 69 unique
 Lethal Company pipelines pass with allocator assertions/validation enabled.
 Willems has 263 passes and the same five unsupported failures; vkmark has 17
@@ -166,11 +166,102 @@ publication allocated beyond its encodable p0-p31 window. The affected vertex,
 fragment and compute modules are the `rgba32ui` 3D unrolled, nonvolatile sampled
 image-robustness test. They compile on the pre-CS2 baseline and fail both
 before and after the scheduler correction: VS/CS use p24 and FS uses p28,
-where the packer requires a base no greater than p16. These remain unfixed;
-the requested failure ranking precedes further coverage fixes.
+where the packer requires a base no greater than p16. The subsequent fixes and
+validation are recorded below.
 
 Results, per-module causes, CTS aliases and supporting SPIR-V/physical-device
 evidence are in `artifacts/compiler-cross-corpus-20261006/corpus.sqlite3` at the
 workspace root (`failure_audit`, `failure_groups`, and report
 `failure-audit-cts-current`). Detailed replay and comparison databases sit
 alongside it. Unsupported inputs are not reported as executed CTS skips.
+
+## Publication bounds, sink pointers, and compile-time follow-up
+
+`25885a73ff0` bounds an entire publication tuple by its producer encoding's
+DEST range, in both allocation and validation. This preserves each instruction's
+window rather than imposing one global limit. The new shared-RA unit exercises
+8- and 16-word gradient tuples with other publications still live; before the
+fix it reproduces the overflowing p24/p28 allocations. All three advertised
+image-robustness modules now compile on the host. The 10,737-entry third CTS
+population, 268 Willems inputs and 17 vkmark inputs retain their outcomes and
+all recorded main/preamble byte size, instruction, copy, wait, swap, SAVE/FILL,
+GPR and scratch statistics. This claim is limited to the replayed populations.
+
+`e35275cc5ea` applies the existing sink-address lowering before preamble
+extraction runs divergence analysis. The writable sink maps the read-only zero
+page to the writable scratch page and preserves ordinary pointers. The original
+`WritableSinkPointer` compile test now passes; `WritableSinkAddressLowering`
+checks both address cases and elimination of the generic intrinsics. The full
+host unit suite passes: 433 tests, without filtering out compiler tests.
+
+Profiling the large `72acdaeb...-3` geometry shader found two quadratic loops:
+physical completion scheduling scanned every physical block for each logical
+successor, and spill coupling repeatedly scanned predecessor-state and phi lists.
+`1ecb349480d` indexes the NIR-to-physical-block mapping (preserving the last
+physical block for duplicate NIR blocks). `db0867aa028` uses the spiller's
+existing scratch bitsets to index coupling membership. These changes preserve
+allocation policy, spill placement and candidate selection. The 433 host tests
+pass after both changes, including the loop-phi allocation/execution checks.
+
+Repeated host measurements compare pre-CS2 `7e706cb7ebc`, the publication fix
+`25885a73ff0` before the two speedups, and compiler tip `db0867aa028`, with the
+same frontend, CPU 12 affinity, disabled shader cache and thread CPU clocks.
+Each arm runs twice in forward/reverse order. There are no concurrent local
+builds or compiler replays; unrelated host tasks remain running. The CPU
+frequency governor remains `powersave`. These are host compiler timings, not
+GPU execution measurements.
+
+The overall estimate uses 3,072 matched successful CTS entries: 32 deterministic
+hash-selected entries from each of 16 baseline-time quantiles in each of six
+API stages. Each stratum is weighted by its full-population size, covering the
+182,853 matched-success population. Runs were expanded in two waves (768 and
+2,304 entries). Five geometry shaders with the largest frozen-current backend
+times are measured separately, without adding their selection bias to the
+overall estimate.
+
+| Backend CPU measure | Pre-CS2 | Before speedups | Tip |
+| --- | ---: | ---: | ---: |
+| Weighted overall estimate, relative to pre-CS2 | 1.000 | 1.139 | 1.084 |
+| Five large GS, total seconds | 28.907 | 50.002 | 44.782 |
+| `72acdaeb622d84c6...` GS, seconds | 7.901 | 15.535 | 13.493 |
+
+The speedups reduce the weighted overall estimate by **4.9%** and the five-GS
+total by **10.4%**. Remaining increases versus pre-CS2 are **8.4%** overall and
+**54.9%** in the five-GS total. The paired within-stratum bootstrap 95% interval
+for the overall remaining increase is **+2.5% to +15.8%**; this is an estimate,
+not a newly completed full-corpus timing run. Full shader-creation CPU time has
+an estimated **7.1%** remaining increase. The compiler still evaluates additional
+uniform-rematerialization and sample-hoisting alternatives absent from the
+pre-CS2 compiler. The optimization here preserves those candidate policies.
+
+For context, the older complete replay (before `90045f62d46`) recorded backend
+CPU totals of 5,152.42 -> 6,327.36 seconds (+22.8%) and full shader creation of
+6,489.82 -> 7,675.53 seconds (+18.3%) on the 182,853 matched successes. Those
+runs span resumptions and host loads; do not compare their absolute totals to
+an extrapolated sample as if this were one controlled experiment.
+
+All 3,072 sampled shaders and the five large GS compile in every arm and repeat.
+The before-speedup and tip program-statistics records match exactly. The tip
+also preserves every outcome and complete recorded program-statistics record
+in the 10,737-entry CTS subset, Willems and vkmark, including byte sizes and
+wait counts. There is no claim of a full-corpus replay on this tip.
+
+Reproduction inputs, driver provenance, timing scripts, raw result databases,
+unit logs and comparison reports are retained in the workspace evidence pack
+under `files.path` prefix
+`followup-20261006/publication-and-timing/` in
+`artifacts/compiler-cross-corpus-20261006/corpus.sqlite3`. The human-readable
+summary is `artifacts/compiler-cross-corpus-20261006/timing-repeat-summary-3072.json`;
+`timing-sample-3072.json` records all identities, strata and weights.
+
+Hardware validation used the isolated ARM64 driver built from `db0867aa028`,
+SHA-256 `bd7b868845bc06f8fad2cf69c8c6b0c1f58b330b272aa20bcdf891ba8cd136e3`.
+The renderer reports Honeykrisp, Mesa 26.3.0-devel (`git-db0867aa02`). Normal CTS:
+463 pass, 1 skip; forced-spill CTS: 139 pass, 1 skip, with 432 SAVE and 662 FILL
+instructions across compiler captures and 32 passing cases containing both.
+Both skips are `spirv_assembly.instruction.compute.opphi.vartype_longvec`.
+There are no failures, expected failures or flakes in either set. Compression
+uses the normal default (`ASAHI_MESA_DEBUG` unset); `AGX_SPILL_COALESCE=1` in both
+runs. The mini lease was acquired with `wait` and released after the runs.
+The driver was not installed system-wide. Logs and hashes are retained under
+workspace `artifacts/mesa-compiler-db0867aa028/`.
