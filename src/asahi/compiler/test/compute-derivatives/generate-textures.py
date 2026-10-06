@@ -32,7 +32,8 @@ for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
             threads = math.prod(shape)
             # Keep the extended cube footprints within one face, including
             # the reduced dimensions of the base-mip-one view.
-            for lod in ([-2., 0., 1., None] if a.extended else [-1., 1., 3., None]):
+            cube_footprints = a.extended and dim.startswith('cube')
+            for lod in ([-2., 0., 1., None] if cube_footprints else [-1., 1., 3., None]):
                 for config, (bias, lo, hi, base, aniso, nearest) in enumerate(configs):
                     name = f'{dim}_{threads}_lod{int(lod) if lod is not None else "uniform"}_s{config}'
                     if a.extended: name += '_' + footprint
