@@ -197,3 +197,12 @@ The complete 79-dispatch bit-exact evidence is retained in
 bytes, initialized uniform words, run-length encoded expected and actual lane
 outputs, mismatches and SHA256 over little-endian output words. The initial
 harness compilation assertion is listed separately from GPU dispatches.
+
+A final replay of the frozen **uninstrumented** driver also completed all
+10,161 main programs and 6,100 preambles. Every main metric, every preamble
+metric and every actual uniform destination matches the diagnostic result
+exactly. The independent phi-edge census likewise matches all main metrics.
+Source hashes and verification flags are retained in
+[uniform-replay-verification.json](uniform-replay-verification.json). All 79
+compact probe fixtures were checked back against their original stdout and
+little-endian word hashes.
