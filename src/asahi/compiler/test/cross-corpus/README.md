@@ -276,3 +276,7 @@ before this pass and 28.972 pre-CS2: an 11.5% reduction, leaving 37.9% overhead.
 All 433 units pass; the 10,737 CTS inputs, 268 Willems and 17 vkmark inputs retain
 identical outcomes and complete recorded program statistics. This pass used
 no hardware. Raw evidence is in workspace `artifacts/proton-readiness-20261006/`.
+
+The [DXVK code-generation follow-up](DXVK-CODEGEN.md) compares all 69 recorded
+Lethal Company pipelines with the other corpora, measures descriptor-hoisting
+changes and separates static robustness costs from runtime claims.
