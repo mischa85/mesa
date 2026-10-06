@@ -191,3 +191,9 @@ Each validated family is committed separately: select `e096cec38df`, predicate
 `ec37d02dbbd`, shifts `e41efdaff4b`, conversions `4c78842fb7d`, bit operations
 `421dfe0323c`, and float special `6a1f13364ae`. Loop weighting is `e86edc1f9df`;
 cross-control-flow immutable imports are `ff53faea9e7`. All work remains local.
+
+The complete 79-dispatch bit-exact evidence is retained in
+[uniform-source-probes.json](uniform-source-probes.json): injected instruction
+bytes, initialized uniform words, run-length encoded expected and actual lane
+outputs, mismatches and SHA256 over little-endian output words. The initial
+harness compilation assertion is listed separately from GPU dispatches.
