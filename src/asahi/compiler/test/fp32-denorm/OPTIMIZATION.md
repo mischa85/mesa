@@ -175,9 +175,31 @@ FP64 failure. The actual x86 game library compiles all 69 reconstructed
 Lethal pipeline entries (49 compiled, 20 shaderless). Its queried properties
 advertise FTZ32, float-controls2, RTE32, and signed-zero/Inf/NaN preservation.
 
-Native hardware CTS for this optimization is pending the mini lease; these
-host results do not replace it. Main owns the mini for game timing. The
-prepared native library SHA-256 is
+Native hardware validation on T8132 matches the integration baseline
+case-for-case:
+
+| List | Pass | Skip | Fail / expected fail / flake |
+| --- | ---: | ---: | ---: |
+| Float controls | 3,328 | 868 | 0 / 0 / 0 |
+| Focused normal | 463 | 1 | 0 / 0 / 0 |
+| Forced spill | 139 | 1 | 0 / 0 / 0 |
+| Memory | 1,034 | 1,019 | 0 / 0 / 0 |
+| Robust descriptors | 915 | 400 | 0 / 0 / 0 |
+
+All 42 authored probes pass all 66 input cases in both default and FTZ modes
+(2,772 exact-bit results per mode); every output matches baseline. There
+were no new kernel log entries, and input forwarding remained active.
+The mini lease was released immediately after collecting results. Raw CTS
+results and probes are in `artifacts/ftz-codegen-20261006/hardware/`;
+`comparison.json` records the per-case comparison.
+
+Main measured the x86 game driver at 21.679 GPU ms/frame, versus 24.124
+for original FTZ and 21.256 for no FTZ. Fragment/compute times were
+7.892/12.296 ms. This is one stationary-scene capture, not a replicated
+effect or a per-pipeline measurement; see
+`artifacts/lethal-mechanism-20261006/MECHANISM.md`.
+
+The validated native library SHA-256 is
 `e8402b2e30c034d18aa510eac40bf99221c3c58a45d47269c107f79ae6bac663`.
 
 The game driver is under workspace-relative
