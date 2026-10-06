@@ -4,9 +4,9 @@
 All private compiler headers and compiler objects come from the same revision.
 Only compact statistics and timing are added to the private source snapshot.
 """
-import argparse,concurrent.futures,hashlib,json,shlex,subprocess,tarfile,io
+import argparse,concurrent.futures,hashlib,json,re,shlex,subprocess,tarfile,io
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--mesa',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--ref',required=True);p.add_argument('--pressure-gate',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--mesa',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--ref',required=True);p.add_argument('--pressure-gate',action='store_true');p.add_argument('--detailed-metrics',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args()
 r=a.mesa.resolve();b=a.build.resolve();d=a.output.resolve();d.mkdir(parents=True,exist_ok=False)
 rev=subprocess.check_output(['git','rev-parse',a.ref],cwd=r,text=True).strip()
 raw=subprocess.check_output(['git','archive',rev,'src/asahi'],cwd=r)
@@ -40,6 +40,34 @@ extra='''      unsigned swaps = 0;
 c=c.replace(anchor,anchor+'\n'+extra)
 c=c.replace('gprs=%u scratch=%u\\n",','gprs=%u scratch=%u swaps=%u stub=%u\\n",',1)
 c=c.replace('              lower.program.scratch_size);','              lower.program.scratch_size, swaps, nir->info.name && !strcmp(nir->info.name,"stub VS"));',1)
+if a.detailed_metrics:
+ # Count final semantic instructions, including standalone waits. Uniform
+ # source masks name hardware operand slots, not the compact GPR src[] list.
+ enum=(cdir/'agx_apple9_ir.h').read_text().split('enum agx_apple9_vir_opcode {')[1].split('};')[0]
+ ops=re.findall(r'AGX_APPLE9_VIR_\w+',enum)
+ metrics="""      unsigned opcounts[256] = {0}, uniform_refs = 0, uniform_words = 0;
+      bool uniform_seen[1024] = {0};
+      for (unsigned i = 0; i < lower.program.instruction_count; ++i) {
+         const struct agx_apple9_vir_instr *I = lower.program.instructions[i];
+         ++opcounts[I->op];
+         for (unsigned j = 0; j < 4; ++j) {
+            if (I->alu_src_uniform_mask & (1u << j)) {
+               ++uniform_refs;
+               if (I->alu_src_value[j] < 1024) uniform_seen[I->alu_src_value[j]] = true;
+            }
+         }
+         if (I->op == AGX_APPLE9_VIR_IOR_UNIFORM) {
+            ++uniform_refs;
+            if (I->immediate < 1024) uniform_seen[I->immediate] = true;
+         }
+      }
+      for (unsigned i = 0; i < 1024; ++i) uniform_words += uniform_seen[i];
+"""
+ c=c.replace(anchor,anchor+'\n'+metrics)
+ fmt=' uniform_refs=%u uniform_words=%u'+''.join(' op_'+v.removeprefix('AGX_APPLE9_VIR_').lower()+'=%u' for v in ops)
+ args='uniform_refs, uniform_words'+''.join(', opcounts['+v+']' for v in ops)
+ c=c.replace(' scratch=%u',fmt+' scratch=%u',1)
+ c=c.replace('              lower.program.scratch_size','              '+args+', lower.program.scratch_size',1)
 if a.pressure_gate:
  header=Path(__file__).resolve().parent/'hoist-pressure.h'
  c=c.replace('struct apple9_hoist_state {', '#include "'+str(header)+'"\nstruct apple9_hoist_state {')
