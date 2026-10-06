@@ -1,10 +1,11 @@
 # Linear compute derivatives on Apple9
 
-2026-10-06, T8132 / Apple M4 G16G. Explicit linear derivatives work through
-existing subgroup lane transport, including FP16. **The Vulkan extension and
-`computeDerivativeGroupLinear` remain unadvertised.** The initial results below
-had six sampling/query failures. The [implicit-LOD follow-up](IMPLICIT-LOD.md)
-fixes the two sampling cases; four query cases still fail.
+This records the initial explicit linear-derivative work on 2026-10-06,
+T8132 / Apple M4 G16G. The initial unadvertised prototype had six texture
+failures. The [implicit-LOD follow-up](IMPLICIT-LOD.md) fixed two sampling cases,
+and the [query completion](QUERY-FOLLOWUP.md) fixes all four remaining queries
+and advertises linear compute derivatives. Results and unsupported-feature
+statements below describe the initial prototype.
 
 ## Model
 

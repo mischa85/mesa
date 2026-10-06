@@ -1,58 +1,132 @@
-# Compute LOD query follow-up
+# Compute derivatives: LOD query completion
 
-WIP on `apple9/compute-derivative-query`, based on integration-next
-`a852a6c55a44` and merged with `apple9/compute-derivative-lod`.
+2026-10-06, T8132 / Apple M4 G16G B1. Local branch
+`apple9/compute-derivative-query` starts at integration-next `a852a6c55a44`
+and merges the earlier `apple9/compute-derivative-lod` work.
 
-The earlier six failures became four after implicit compute samples were
-lowered through explicit gradients. The four remaining cases are mip-0/mip-1
-LOD queries, each at local sizes 16×1×1 and 4×4×1. These are **linear** derivative
-groups: four consecutive local invocation indices form a group, even in a
-two-dimensional workgroup. The separate quad-group feature remains false.
+The four remaining query CTS failures are fixed. The G16 capability filter now
+exposes `VK_KHR_compute_shader_derivatives` and
+`computeDerivativeGroupLinear`. `computeDerivativeGroupQuads` remains false;
+mesh/task derivatives remain unsupported. This is a local candidate, not an
+installed system driver or a claim of full Vulkan conformance.
 
-Direct derivatives and explicit-gradient sample controls pass with this lane
-mapping. The remaining query path instead reuses the fragment implicit LOD
-query encoding. It returns zero in the existing compute experiments. Adding
-the query flag to a gradient sample did not produce query results; that
-experiment was removed in the previous series.
+## Root cause and retained model
 
-In the failing linear CTS query cases, the 1D image width is 16. Coordinates
-alternate by 0.08 or 0.10 along the derivative group's x pair, with zero y
-derivative. These give footprints 1.28 and 1.6 texels and base LODs
-`log2(1.28) = 0.356144` and `log2(1.6) = 0.678072`. Nearest mip selection gives
-levels zero and one respectively. Returning raw LOD zero therefore fails both
-query variants, independently of the local workgroup shape. This is why
-changing the linear group into a local-X/local-Y quad is not the correction.
+The failing cases query mip 0 and mip 1 at local sizes 16×1×1 and 4×4×1.
+These use **linear** groups: four consecutive local invocation indices form a
+derivative group, even in a two-dimensional workgroup. Direct derivative and
+explicit-gradient controls already validated this mapping. Local-X/local-Y
+quad grouping would be incorrect for these cases.
 
-The new WIP calculates the query from ordinary NIR derivatives, spatial view
-dimensions, projected cube gradients, sampler anisotropy, bias, clamping, and
-mip selection. Those derivatives use the existing linear shuffle lowering.
-The two query components represent the selected view-relative mip and the
-biased, unclamped LOD. Array layers do not contribute derivatives. Fragment
-queries retain their native path. Cube queries follow the existing common
-cube-gradient scalar-LOD lowering.
+The 1D image width is 16. Coordinate differences 0.08 and 0.10 produce
+footprints 1.28 and 1.6 texels, giving raw LODs `log2(1.28) = 0.356144` and
+`log2(1.6) = 0.678072`. Nearest mip selection gives levels zero and one. The
+old native fragment-query path returned zero in compute, so it failed both
+query variants. Adding the query flag to gradient samples returned image
+colors rather than query results; that discarded experiment is not retained.
 
-The texture probes also exposed a common NIR optimization issue: converting
-zero explicit gradients to LOD zero lets positive sampler bias move sampling
-away from the minimum level. The WIP uses negative infinity for the zero
-footprint before bias and sampler clamping.
+The compiler calculates the compute query through ordinary NIR arithmetic,
+using the validated linear derivative lowering and runtime sampler/view state:
 
-Host validation so far:
+- Form derivatives after projection, excluding array layers and comparison
+  values. Scale spatial gradients by view dimensions. Project cube gradients
+  with the same quotient-rule geometry as the common cube sampling lowering.
+- For 1D/2D anisotropic sampling, use squared major length
+  `max(dot(dx, dx), dot(dy, dy))`. The squared minor footprint is squared
+  parallelogram area divided by squared major length (zero for a zero or 1D
+  footprint). Effective squared footprint is
+  `max(minor_squared, major_squared / max_anisotropy²)`.
+  Hardware probes distinguish this from incorrectly using the shorter
+  derivative length for skew or collinear gradients.
+- Native 3D sampling ignores anisotropy in the tested path. Cube sampling is
+  already lowered through scalar LODs. Their queries therefore use the
+  isotropic major footprint, matching those sample paths.
+- Calculate `0.5 * log2(footprint_squared)` and add sampler bias, bounded by
+  the advertised bias limit. Preserve negative infinity for zero footprint.
+- Return the biased, unclamped LOD separately from the mip selection after
+  sampler limits, view levels, view minimum LOD and nearest/linear mip mode.
+  Null descriptors return two zero components; dummy zero-page descriptors
+  retain their logical empty state in the runtime metadata.
 
-- Complete aarch64 Vulkan driver build succeeds.
-- All 459 compiler tests pass.
-- All 336 existing texture shaders compile through the host Vulkan path.
-- All 1,344 additional affine-footprint shaders compile. These exercise
-  rotated, unequal, skew, and depth-varying gradients with both workgroup
-  shapes and the existing sampler/view configurations.
+Fragment queries retain their native path. No capture-specific sequences,
+fixed registers, replay dependencies or new native instruction encodings are
+introduced. The anisotropy field uses existing runtime sampler-table space.
 
-The probe runner now checks query/sample agreement for anisotropic cases too,
-using mip-tagged image data. Native execution remains required to validate the
-software footprint against the texture unit, especially its allowed footprint
-approximations. The WIP capability bits are enabled only on this isolated
-topic for that testing. This is not yet an integration-ready exposure change.
+Two common NIR folding corrections were needed by the controls: zero explicit
+gradients become LOD negative infinity, since LOD zero plus positive sampler
+bias incorrectly selects a higher mip; and folding must stop when opaque
+backend operands are present. In particular, a packed gradient minimum LOD
+cannot be reinterpreted as an explicit-LOD operand. The latter fixes all 24
+zero-gradient array/view-minimum compilation failures from the intermediate
+candidate. The missing `ddy` source guard is also corrected.
 
-Artifacts are under `artifacts/compute-derivative-query-20261006/` in the
-workspace. The queued native run follows integration-next's CTS/float-control
-validation and uses a separate mini lease. The candidate library is pinned by
-`driver-manifest.json`; the probe and CTS logs must be reviewed before claiming
-that the four failures are fixed.
+## Native validation
+
+The tested production code is `b753d0c32f2`; subsequent commits extend only the
+probe matrix and its reference tolerance. Private library SHA-256:
+`53a29c8085660c6c457d75e1f71c5aa962c800384642eabab2695ec4444ee213`.
+Every probe records Apple M4 G16G B1 and the candidate driver identity.
+
+| Focused derivative CTS | Pass | Fail | Skip | Expected fail | Flake |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Earlier implicit-sampling fix | 86 | 4 | 459 | 0 | 0 |
+| Completed query candidate | 90 | 0 | 459 | 0 | 0 |
+
+| Texture probe matrix | Cases passed | Rows checked |
+| --- | ---: | ---: |
+| Original dimensions/sampler matrix | 336 | 18,144 |
+| Affine footprints, original decimal rotation | 1,344 | 72,576 |
+| Affine footprints, exact binary rotation and higher non-cube LOD | 1,344 | 72,576 |
+| View minimum LOD 1.25 | 336 | 18,144 |
+| Null descriptors | 336 | 18,144 |
+| Total | **3,696** | **199,584** |
+
+There are zero failing cases, bad rows or process errors. Seven image forms
+(1D, 1D array, 2D, 2D array, 3D, cube and cube array), two workgroup shapes,
+three workgroups per dispatch, varying array layers, biases, clamps, base mip
+views, nearest mip selection and anisotropy are covered. Affine cases add
+elongated, rotated, skew and depth-varying gradients. Anisotropic queries must
+agree with mip-tagged sampling, rather than merely agreeing with another
+query implementation; isotropic arms additionally use analytic LOD references.
+
+The cube explicit-gradient control allows one Q6 LOD step plus 0.002: an
+FP32 subtraction of input coordinates and its analytic gradient literal can
+fall on opposite sides of a Q6 boundary. Eight old decimal-rotation controls
+exposed this rounding difference. This tolerance change is explicit, not an
+expected-failure classification; query/sample and analytic checks retain their
+0.04 tolerance, and non-cube gradient controls retain 0.002. The second affine
+matrix uses binary-exact rotation coordinates as a separate check.
+
+All **459 host compiler tests pass**, and the aarch64 Vulkan driver builds.
+The kernel journal has no new entries during the native derivative/matrix run;
+input forwarding remained active. Normal compression is enabled and shader
+caches are disabled. No system driver installation, kernel change or reset was
+needed. Hardware access uses exclusive mini leases.
+
+## Reproduction and provenance
+
+Workspace evidence is in `artifacts/compute-derivative-query-20261006/`:
+`hardware-area/candidate/manifest.json`, `derivatives/results.csv`, all five
+`textures*.json` files with raw rows, `hardware-area/kernel-new.log`, and
+`area-host-tests.log`. Intermediate failed runs remain separate under
+`hardware/candidate/`; they are not the final results above.
+
+Build `mesa_clc`, `vtn_bindgen2` and `asahi_clc` from the same source revision
+before the cross build. Point the cross build at these matching host tools.
+An ICD with bare `libvulkan_asahi.so` can load the installed driver: use an
+absolute candidate library path and verify both SHA-256 and runtime identity.
+
+```sh
+python generate-textures.py /tmp/compute-textures
+python generate-textures.py /tmp/compute-affine --extended
+python generate-textures.py /tmp/compute-view-min --view-min 1.25
+python run-textures.py /tmp/compute-textures --probe ./texture-probe \
+  --icd /absolute/candidate/icd.json --output textures.json
+python run-textures.py /tmp/compute-textures --probe ./texture-probe \
+  --icd /absolute/candidate/icd.json --null-image --output null.json
+```
+
+The image-view-minimum harness requests the existing vkd3d application opt-in.
+The extension exposure is limited to G16; the older-GPU capability tables are
+unchanged. Buffer int64 atomics are still unimplemented and assessed separately
+on `apple9/int64-atomic-assessment`.

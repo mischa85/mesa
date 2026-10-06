@@ -1,11 +1,11 @@
 # Compute implicit sampling through explicit gradients
 
-2026-10-06, T8132 / Apple M4 G16G B1, kernel `7.1.13-m4-g16+`.
-The separate `apple9/compute-derivative-lod` branch builds on validated
-`apple9/compiler-integration` (`9586556102f`). It fixes both remaining implicit
-sampling CTS failures. Four compute LOD-query failures remain, so neither
-`VK_KHR_compute_shader_derivatives` nor `computeDerivativeGroupLinear` is exposed.
-This follow-up is not included in the integration hand-off.
+This records the earlier `apple9/compute-derivative-lod` stage on 2026-10-06,
+T8132 / Apple M4 G16G B1. It fixed two implicit-sampling cases and left four
+query failures, so that branch did not advertise the extension. The later
+[query completion](QUERY-FOLLOWUP.md) resolves all four, corrects the
+zero-gradient controls discussed below, and enables linear compute derivatives.
+Results and remaining-work statements below describe the earlier stage.
 
 ## Retained compiler model
 
