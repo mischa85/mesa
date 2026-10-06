@@ -42,7 +42,11 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
         implicit, explicit, qx, qy = map(f32, (v[2], v[4], v[5], v[6]))
         if not all(map(math.isfinite, [implicit,explicit,qx])) or math.isnan(qy): failures.append('nonfinite')
         if case['lod'] is not None and not math.isfinite(qy): failures.append('nonfinite LOD')
-        if abs(implicit-explicit) > .002: failures.append('gradient control')
+        # Cube gradients become scalar Q6 LODs. A rounded input subtraction
+        # and the analytic gradient literal can straddle one Q6 boundary,
+        # even when their difference is a single FP32 rounding error.
+        gradient_tolerance = 1/64 + .002 if case['dim'].startswith('cube') else .002
+        if abs(implicit-explicit) > gradient_tolerance: failures.append('gradient control')
         # Every mip is tagged with its physical level plus one. Query and
         # sampling must agree even where anisotropic selection is variable.
         if a.null_image:
