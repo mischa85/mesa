@@ -36,7 +36,8 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
         if i != index or v[:2] != list(expected_in[:2]) or v[3] != (i ^ 0x6d2b79f5) or v[7] != (i ^ 0xa5120000):
             failures.append('transport')
         implicit, explicit, qx, qy = map(f32, (v[2], v[4], v[5], v[6]))
-        if not all(map(math.isfinite, [implicit,explicit,qx,qy])): failures.append('nonfinite')
+        if not all(map(math.isfinite, [implicit,explicit,qx])) or math.isnan(qy): failures.append('nonfinite')
+        if case['lod'] is not None and not math.isfinite(qy): failures.append('nonfinite LOD')
         if abs(implicit-explicit) > .002: failures.append('gradient control')
         # Anisotropic LOD selection is implementation dependent. For that
         # arm compare the two sample paths; retain query values as evidence.
@@ -44,7 +45,9 @@ for case in json.loads((a.directory/'texture-cases.json').read_text()):
             if abs(implicit-case['expected_sample']) > .04: failures.append('sample reference')
             if abs(explicit-case['expected_sample']) > .04: failures.append('explicit reference')
             if abs(qx-case['expected_query'][0]) > .04: failures.append('clamped query')
-            if abs(qy-case['expected_query'][1]) > .04: failures.append('unclamped query')
+            if case['expected_query'][1] is None:
+                if qy > -16: failures.append('zero-gradient query')
+            elif abs(qy-case['expected_query'][1]) > .04: failures.append('unclamped query')
         if failures: bad.append(dict(row=i,failures=failures,values=[implicit,explicit,qx,qy]))
     result = dict(case=case,returncode=proc.returncode,row_count=len(rows),bad=bad,
                   stderr=proc.stderr,rows=rows)

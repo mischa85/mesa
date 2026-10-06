@@ -12,17 +12,17 @@ cases = []
 # base distinguishes view-relative LOD from physical mip indices.
 configs = [(0., 0., 5., 0, 1., False), (.5, 1., 3., 0, 1., False),
            (-1., 0., 2., 1, 1., False), (0., 0., 5., 0, 4., False),
-           (.25, 0., 5., 0, 1., True)]
+           (.25, 0., 5., 0, 1., True), (.5, 0., 5., 0, 1., False)]
 for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
     array = dim.endswith('a')
     axes = 3 if dim.startswith(('cube', '3d')) else int(dim[0])
     sampler = {'1d':'1D', '1da':'1DArray', '2d':'2D', '2da':'2DArray', '3d':'3D', 'cube':'Cube', 'cubea':'CubeArray'}[dim]
     for shape in [(4,4,1), (20,1,1)]:
         threads = math.prod(shape)
-        for lod in [-1., 1., 3.]:
+        for lod in [-1., 1., 3., None]:
             for config, (bias, lo, hi, base, aniso, nearest) in enumerate(configs):
-                name = f'{dim}_{threads}_lod{int(lod)}_s{config}'
-                scale = 2**lod / (32 >> base)
+                name = f'{dim}_{threads}_lod{int(lod) if lod is not None else "uniform"}_s{config}'
+                scale = 0. if lod is None else 2**lod / (32 >> base)
                 coords = []
                 for i in range(3 * threads):
                     lane = i % threads
@@ -46,6 +46,9 @@ for dim in ['1d', '1da', '2d', '2da', '3d', 'cube', 'cubea']:
                 else:
                     dx = f'vec{axes}({scale},0' + (',0)' if axes == 3 else ')')
                     dy = f'vec{axes}(0,{scale}' + (',0)' if axes == 3 else ')')
+                constant_coords = ''
+                if lod is None:
+                    constant_coords = 'c.xyz=vec3(1,-.5,.5);' if dim.startswith('cube') else ('c.x=.25;' if axes == 1 else 'c.xy=vec2(.25);')
                 source = f'''#version 450
 #extension GL_NV_compute_shader_derivatives : require
 layout(local_size_x={shape[0]},local_size_y={shape[1]},local_size_z={shape[2]}) in;
@@ -56,7 +59,7 @@ layout(set=0,binding=2) uniform sampler{sampler} tex;
 void main() {{
   uint i=gl_WorkGroupID.x*{threads}u+gl_LocalInvocationIndex;
   uvec4 v=input_data[i];
-  vec4 c=uintBitsToFloat(v);
+  vec4 c=uintBitsToFloat(v); {constant_coords}
   float implicit_value=texture(tex,{sample_coord}).r;
   float explicit_value=textureGrad(tex,{sample_coord},{dx},{dy}).r;
   vec2 lod=textureQueryLod(tex,{query_coord});
@@ -68,8 +71,8 @@ void main() {{
                 glsl.write_text(source)
                 subprocess.run(['glslangValidator','-V','--target-env','vulkan1.2',str(glsl),'-o',str(spv)],check=True,stdout=subprocess.DEVNULL)
                 subprocess.run(['spirv-val','--target-env','vulkan1.2',str(spv)],check=True)
-                raw = lod + bias
-                clamped = max(lo, min(raw, hi, 5-base))
+                raw = lod + bias if lod is not None else None
+                clamped = lo if raw is None else max(lo, min(raw, hi, 5-base))
                 if nearest:
                     clamped = math.floor(clamped + .5)
                 cases.append(dict(name=name,dim=dim,shape=shape,threads=threads,count=3*threads,
