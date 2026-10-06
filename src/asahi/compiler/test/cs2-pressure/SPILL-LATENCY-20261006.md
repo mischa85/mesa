@@ -85,3 +85,13 @@ Both scheduling choices were measured for all 320 at-cap programs. Hoisting samp
 The requested pre-spill compiler is **`c62490d01c23d7ede0a152d4d1033176b442ce80`**. Use `artifacts/mesa-uniform-c62490d01c2/aarch64-game/libvulkan_asahi.so`, with its neighboring ICD and manifest. It retains the prior game-test runtime (`1a8869952423256baaa52097db13aaa250fa84ab` plus the exact source-B overlay), including GPU busy timing instrumentation. Every noncompiler source-B manifest hash was verified. Driver SHA-256: `d2396d2bfea94d962030b4eb1da5f527345f6b2c79c4597d41f1acd1dbdec1b2`.
 
 This A/B driver intentionally predates the new spill work. The sibling `aarch64/` library uses the compiler checkout’s older runtime and should not be used for a controlled compiler-only comparison. The frozen compiler source archive and build instructions/provenance are in the same artifact directory. Everything remains local.
+
+### Toolchain provenance correction
+
+The runtime source match above does **not** make that earlier artifact a fully
+controlled compiler-only build: it used cross GCC 16.1.0, whereas frozen game B
+records GCC 16.2.1 (Red Hat 16.2.1-2), plus a 16.1.1 contribution in `.comment`.
+The `1f4c8abe909` handoff must match frozen B's native toolchain and flags. Its
+pinned source and CTS kit are prepared in `artifacts/mesa-spill-1f4c8abe909/`;
+a matched native library and hardware validation are pending the mini slot.
+See [the next latency levers and probe plan](NEXT-LATENCY-LEVERS.md).
