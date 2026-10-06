@@ -2,9 +2,9 @@
 
 2026-10-06, T8132 / Apple M4 G16G. Explicit linear derivatives work through
 existing subgroup lane transport, including FP16. **The Vulkan extension and
-`computeDerivativeGroupLinear` remain unadvertised:** six required implicit
-sampling/LOD-query CTS cases fail. This scopes the remaining texture work
-rather than claiming the SM6.6 gate is removed.
+`computeDerivativeGroupLinear` remain unadvertised.** The initial results below
+had six sampling/query failures. The [implicit-LOD follow-up](IMPLICIT-LOD.md)
+fixes the two sampling cases; four query cases still fail.
 
 ## Model
 
