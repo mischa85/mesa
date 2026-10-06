@@ -20,7 +20,7 @@ CASES = {
     uint result = private_read(private_words, h & 31u);'''),
     'scan': ('compute', ['SUBGROUP_SCAN_IADD:DEST', 'SUBGROUP_SCAN_IADD:SRC0'], 'uint result = simd_prefix_exclusive_sum(h);'),
     'broadcast': ('compute', ['SUBGROUP_BROADCAST:DEST', 'SUBGROUP_BROADCAST:SRC0', 'SUBGROUP_BROADCAST:SRC1'], 'uint result = simd_broadcast(h, ushort(group.x & 31u));'),
-    'ballot': ('compute', ['SUBGROUP_BALLOT:DEST', 'SUBGROUP_BALLOT:SRC0'], 'uint result = uint(simd_ballot((h & 1u) != 0u).get_mask());'),
+    'ballot': ('compute', ['SUBGROUP_BALLOT:DEST', 'SUBGROUP_BALLOT:SRC0'], 'uint result = uint(static_cast<simd_vote::vote_t>(simd_ballot((h & 1u) != 0u)));'),
     'get_sr': ('compute', ['GET_SR:DEST', 'GET_SR_ZEXT16:DEST'], 'uint result = h ^ local.x ^ (local.y << 5u) ^ (local.z << 10u) ^ (group.x << 15u) ^ (simd_index << 20u) ^ lane;'),
     'half': ('compute', ['FLOAT_TO_HALF_ZEXT:DEST'], 'uint result = uint(as_type<ushort>(half(as_type<float>((h & 0x007fffffu) | 0x3f800000u))));'),
     'float2': ('compute', ['FLOAT2_BASE:DEST', 'FLOAT2_BASE:SRC0', 'FLOAT2_BASE:SRC1'], '''float a = as_type<float>((h & 0x007fffffu) | 0x3f800000u);

@@ -60,3 +60,7 @@ These are compile-only sources: any future execution harness needs separate
 per-invocation storage, valid textures/samplers, a 32-thread shared-memory group,
 and an explicit output oracle. Host checks currently cover generator syntax,
 manifest/source consistency and shell syntax; no Metal SDK is available here.
+
+The ballot case uses the explicit `simd_vote::vote_t` conversion described in
+[Apple's MSL specification, section 6.10.2](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf)
+and used by [Khronos SPIRV-Cross's public MSL tests](https://github.com/KhronosGroup/SPIRV-Cross/blob/main/reference/shaders-msl-no-opt/comp/subgroups.nocompat.vk.msl3.comp).
