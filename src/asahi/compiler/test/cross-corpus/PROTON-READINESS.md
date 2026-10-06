@@ -6,6 +6,10 @@ Honeykrisp. Compiler baseline: `db0867aa028`; allocator follow-up:
 that a game or D3D feature level works. A subsequent
 [FP32 denormal follow-up](../fp32-denorm/RESULTS.md) validates and enables FTZ32
 with focused hardware and CTS execution; FP32 preservation remains unsupported.
+The measured add/mul/FMA instructions flush subnormal operands and results.
+Preservation would require full emulation of affected arithmetic, including
+fused FMA semantics, rather than a feature-bit change. It stays unsupported
+unless a game demonstrates a need for that work.
 
 ## Result and priorities
 
