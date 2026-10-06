@@ -109,3 +109,13 @@ word; a lone straight-line use still does not. An end-to-end test verifies the
 same literal moves from main to setup only for the loop case. Nine constant
 promotion and preamble tests pass. Capture measurements below distinguish this
 follow-up from the instruction-family changes.
+
+## Uniform imports across control flow
+
+The optimizer retains uniform-import provenance across block and execution-mask
+boundaries when the program never writes the uniform window. Register-expression
+CSE still ends at those boundaries. Programs containing uniform writes keep the
+old local tracking and write invalidation, including possible backedges. Tests
+cover both cases and preserve distinct register results across active-lane
+scopes. All 188 non-compiler Apple9 tests and 23 focused compiler control-flow,
+loop, preamble and promotion tests pass.
