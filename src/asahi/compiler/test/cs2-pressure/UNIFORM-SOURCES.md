@@ -119,3 +119,75 @@ old local tracking and write invalidation, including possible backedges. Tests
 cover both cases and preserve distinct register results across active-lane
 scopes. All 188 non-compiler Apple9 tests and 23 focused compiler control-flow,
 loop, preamble and promotion tests pass.
+
+## Whole-capture result
+
+The frozen baseline is `49e1b658f99`, including the earlier phi placement and
+64-cap removal. The final compiler is `ff53faea9e7`: all six instruction-family
+commits, loop-weighted promotion, and immutable uniform folding across control
+flow. All 10,161 main programs and 6,100 preambles completed. The baseline was
+replayed again to count actual uniform writes and setup instructions; all
+10,161 main metric rows exactly match its original frozen run. Host replay uses
+the existing no-op device shim, one worker, eager variants, disabled shader
+cache, spill coalescing and the capture's established `NIR_DEBUG=novalidate`.
+This is static compiler evidence, not measured game performance.
+
+| Stage | Programs | Main instructions Δ | Copies Δ | Swaps Δ | SAVE Δ | FILL Δ | Programs at 96 GPRs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Fragment | 4,127 | −66,334 | −6,067 | −737 | −1,431 | −897 | 346 → 302 |
+| Vertex | 5,045 | −20,127 | −529 | +74 | −114 | −114 | 22 → 14 |
+| Compute | 989 | −23,110 | −3,997 | −92 | +8 | −4 | 9 → 4 |
+| Total | 10,161 | **−109,571** | **−10,593** | **−755** | **−1,537** | **−1,015** | **377 → 320** |
+
+Main instructions fall from 4,931,119 to 4,821,548 (2.22%). Allocated GPR counts
+fall in 2,537 programs, rise in 117, and remain unchanged in 7,507. No program
+newly reaches 96. The sum of per-program GPR counts falls by 21,213; this is not
+an occupancy or dynamic register-usage measurement. Aggregate per-program
+scratch sizes fall by 3,392 bytes. Compute's net four extra SAVE/FILL operations
+and vertex's 74 extra swaps are retained in the totals, not hidden as gains.
+
+Setup is a real cost. Counting each program and its preamble once gives:
+
+| Stage | Setup instruction Δ | Main + setup instruction Δ | Actual setup-written words | Setup code bytes |
+|---|---:|---:|---:|---:|
+| Fragment | +52,288 | −14,046 | 95,512 → 121,656 | 2,303,500 → 2,712,604 |
+| Vertex | +12,754 | −7,373 | 67,012 → 73,389 | 1,272,368 → 1,370,504 |
+| Compute | +35,646 | +12,536 | 34,312 → 52,135 | 670,380 → 948,636 |
+| Total | **+100,688** | **−8,883** | **196,836 → 247,180** | **4,246,248 → 5,031,744** |
+
+These word counts count distinct actual STORE_UNIFORM destinations per setup,
+including both words of a fused wide store. They exclude root pointer words
+and differ from the allocation high-water mark when NIR alignment leaves holes.
+The largest setup writes 237 words, reserves a 244-word range after roots, and
+is 4,162 bytes, up from the baseline's 203 actual words / 3,616 bytes maximum.
+The maximum constant-promotion count is 192. The compiler's 8,192-byte software
+policy bound never binds; no larger-preamble hardware probe was needed.
+
+The descriptor-root ABI reserves 12 words, leaving 244. That covers 5,827
+extracted preambles here. Internal direct-buffer compute programs also include
+262 four-word-root / 252-word-budget cases and 11 eight-word-root / 248-word
+budget cases. The other 4,061 programs have no extracted preamble. Push data,
+system values and descriptor contents in root-addressed memory must not be
+counted as additional flat uniform-file words before setup loads them.
+
+For the final 320 programs at 96 GPRs, 307 exhaust eligible constants with words
+still free, ten leave eligible constants unpromoted because the word window is
+full, two exactly exhaust both eligible constants and the window, and one has
+no extracted preamble. None reaches the code bound. The per-program record for
+all 377 programs that were at the cap in the baseline is
+[uniform-at-cap.csv](uniform-at-cap.csv), including pipeline identity, before/
+after GPRs, NIR allocation, eligible/promoted constants, actual written words,
+free space, setup bytes and binding constraint.
+
+The intermediate six-family build (`6a1f13364ae`) alone removes 76,319 main
+instructions and 1,567 swaps, but adds 1,237 SAVEs / 1,211 FILLs. The retained
+loop-weighted promotion and immutable-import changes improve that result to
+the final totals above. Full intermediate, final and baseline metrics are in
+[uniform-source-results.json](uniform-source-results.json). The source records
+and logs remain under `tmp/uniform-source-probes/` and
+`tmp/cs2-pressure-20261005/uniform-census/{families,final}-whole*`.
+
+Each validated family is committed separately: select `e096cec38df`, predicate
+`ec37d02dbbd`, shifts `e41efdaff4b`, conversions `4c78842fb7d`, bit operations
+`421dfe0323c`, and float special `6a1f13364ae`. Loop weighting is `e86edc1f9df`;
+cross-control-flow immutable imports are `ff53faea9e7`. All work remains local.
