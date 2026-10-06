@@ -33,4 +33,14 @@ with sqlite3.connect(a.output/'comparison.sqlite3') as db:
  db.execute('CREATE TABLE shaders(key TEXT PRIMARY KEY,regression INTEGER,data BLOB NOT NULL) WITHOUT ROWID')
  db.executemany('INSERT INTO shaders VALUES(?,?,?)',((r['key'],int(any(r['main_'+k+'_delta']>0 for k in metrics)),zlib.compress(json.dumps(r).encode(),1)) for r in rows))
 summary=dict(input_count=len(x),matched_pass=len(rows),outcomes=dict(outcomes),main_and_preamble_totals=totals,stages=stages,timing={k:{v:sum(r[k+'_'+v] for r in rows) for v in ['before','after']} for k in ['backend_cpu_ns','create_cpu_ns']},regressors=len(regress),new_failures=[k for k in x if x[k]['status']=='pass' and y[k]['status']!='pass'],baseline_only_failures=[k for k in x if x[k]['status']!='pass' and y[k]['status']=='pass'])
+def percentiles(values):
+ values=sorted(values)
+ return {str(p):values[round((len(values)-1)*p/100)] if values else None for p in [0,50,90,95,99,100]}
+summary['timing_percentiles_ns']={k:{v:percentiles([r[k+'_'+v] for r in rows]) for v in ['before','after']} for k in ['backend_cpu_ns','create_cpu_ns']}
+summary['timing_ratio_percentiles']={k:percentiles([r[k+'_after']/r[k+'_before'] for r in rows if r[k+'_before']>0]) for k in ['backend_cpu_ns','create_cpu_ns']}
+with sqlite3.connect(a.output/'comparison.sqlite3') as db:
+ db.execute('CREATE TABLE reports(name TEXT PRIMARY KEY,data TEXT NOT NULL) WITHOUT ROWID')
+ db.execute('INSERT INTO reports VALUES(?,?)',('summary',json.dumps(summary)))
+ db.execute('CREATE TABLE metrics(stage TEXT,metric TEXT,before INTEGER,after INTEGER,delta INTEGER,improved INTEGER,regressed INTEGER,PRIMARY KEY(stage,metric)) WITHOUT ROWID')
+ db.executemany('INSERT INTO metrics VALUES(?,?,?,?,?,?,?)',((s,k,t['before'],t['after'],t['delta'],t['improved'],t['regressed']) for s,table in [('all',totals),*stages.items()] for k,t in table.items()))
 (a.output/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps({k:v for k,v in summary.items() if k not in ['stages','main_and_preamble_totals']}))

@@ -65,6 +65,17 @@ int main(int argc,char **argv) {
  VkPhysicalDeviceVulkan12Features f12={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,.pNext=&f13};
  VkPhysicalDeviceVulkan11Features f11={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,.pNext=&f12};
  VkPhysicalDeviceFeatures2 f2={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,.pNext=&f11};vkGetPhysicalDeviceFeatures2(p,&f2);
+ if(getenv("CORPUS_CAPS_ONLY")) {
+  VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT atomics={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_2_FEATURES_EXT};
+  VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomics32={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,.pNext=&atomics};
+  VkPhysicalDeviceFeatures2 extra={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,.pNext=&atomics32};vkGetPhysicalDeviceFeatures2(p,&extra);
+  printf("{\"shaderFloat64\":%u,\"shaderInt64\":%u,\"storageInputOutput16\":%u,\"shaderBufferFloat16Atomics\":%u,\"shaderSharedFloat16Atomics\":%u,\"shaderSharedFloat32AtomicAdd\":%u,\"maxComputeSharedMemorySize\":%u,\"maxVertexOutputComponents\":%u,\"maxFragmentInputComponents\":%u,\"maxColorAttachments\":%u,\"maxFragmentDualSrcAttachments\":%u,\"extensions\":[",f2.features.shaderFloat64,f2.features.shaderInt64,f11.storageInputOutput16,atomics.shaderBufferFloat16Atomics,atomics.shaderSharedFloat16Atomics,atomics32.shaderSharedFloat32AtomicAdd,props.limits.maxComputeSharedMemorySize,props.limits.maxVertexOutputComponents,props.limits.maxFragmentInputComponents,props.limits.maxColorAttachments,props.limits.maxFragmentDualSrcAttachments);
+  uint32_t n=0;CHECK(vkEnumerateDeviceExtensionProperties(p,NULL,&n,NULL));
+  VkExtensionProperties *extensions=calloc(n,sizeof(*extensions));if(!extensions)return 2;
+  CHECK(vkEnumerateDeviceExtensionProperties(p,NULL,&n,extensions));
+  for(unsigned x=0;x<n;x++)printf("%s\"%s\"",x?",":"",extensions[x].extensionName);
+  puts("]}");free(extensions);vkDestroyInstance(i,NULL);return 0;
+ }
  VkPhysicalDeviceShaderObjectFeaturesEXT so={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT,.shaderObject=VK_TRUE,.pNext=&f2};
  const char *ext="VK_EXT_shader_object";float priority=1;VkDevice d;
  CHECK(vkCreateDevice(p,&(VkDeviceCreateInfo){.sType=VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,.pNext=&so,.queueCreateInfoCount=1,.pQueueCreateInfos=&(VkDeviceQueueCreateInfo){.sType=VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,.queueCount=1,.pQueuePriorities=&priority},.enabledExtensionCount=1,.ppEnabledExtensionNames=&ext},0,&d));
