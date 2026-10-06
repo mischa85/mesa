@@ -116,3 +116,61 @@ The current interfaces supersede the loose-file commands above:
 `--exclude-results` accepts packed result databases for continuation populations.
 Keep the corpus and source hashes stable when resuming, and distinguish timings
 across interruptions. Never infer GPU correctness from these CPU-only replays.
+
+## October 6 follow-up
+
+The accounting correction `81b3ce1b9a5` gives emitted main programs precedence
+over an empty helper variant. Frozen run rows remain unchanged; normalized
+merges retain the original classification and its correction evidence.
+
+The 951-instruction regression in
+`dEQP-VK.ubo.random.16bit.nested_structs_arrays_instance_arrays.18/frag`
+was triggered by `2fac9e8149a` (native integer equality). Its parent `b570881632b`
+emits 5,218 instructions, versus 7,880 immediately after that change. Later
+allocator improvements reduce that to 6,775, versus the original pre-CS2
+baseline's 5,824. Native equality exposed breadth-first expansion of equal-cost
+reduction trees in the pressure scheduler; reverting native equality is not
+needed. `90045f62d46` follows newly exposed producers on pressure-increasing
+ties. The reduced scheduler test needs at most six live values, versus 17
+before the fix. The affected fragment shader now has 3,587 instructions,
+zero SAVE/FILL instructions and zero scratch, versus 504 SAVE, 504 FILL and
+2,016 scratch bytes before the fix.
+
+Validation: 263 non-compiler unit tests and 34 focused compiler tests pass.
+The full unit invocation still stops at the previously reproduced unrelated
+`Apple9Compiler.WritableSinkPointer` NIR divergence assertion. All 69 unique
+Lethal Company pipelines pass with allocator assertions/validation enabled.
+Willems has 263 passes and the same five unsupported failures; vkmark has 17
+passes. The 10,737-entry third CTS population retains exactly 10,421 passes,
+191 compile failures and 125 crashes. Its main instruction total falls 2.38%
+and SAVE/FILL counts fall 21.2%; individual code-size tradeoffs remain, recorded
+in the comparison database (largest increase: 232 instructions in an 8-bit UBO
+compute shader; one tessellation program adds four SAVE/FILL pairs). This is
+host compilation evidence, not hardware execution or a GPU speed measurement.
+
+The complete pre-scheduler-fix corpus comprises 279,775 shader entry points.
+Its normalized current result is 182,853 passes, 150 empty shaders, 96,526
+compile failures and 246 crashes. Audit the **current** failures, including
+candidate-only failures, rather than taking the baseline failures as exhaustive.
+`audit-failures.py --include-crashes` classifies all 96,772 failing modules:
+
+| Classification | Unique modules |
+| --- | ---: |
+| Unadvertised features | 96,602 |
+| Exceeded advertised limits | 167 |
+| Advertised backend failure | 3 |
+| Unclassified | 0 |
+
+The only advertised-backend cause found is a 16-word 3D texture-gradient
+publication allocated beyond its encodable p0-p31 window. The affected vertex,
+fragment and compute modules are the `rgba32ui` 3D unrolled, nonvolatile sampled
+image-robustness test. They compile on the pre-CS2 baseline and fail both
+before and after the scheduler correction: VS/CS use p24 and FS uses p28,
+where the packer requires a base no greater than p16. These remain unfixed;
+the requested failure ranking precedes further coverage fixes.
+
+Results, per-module causes, CTS aliases and supporting SPIR-V/physical-device
+evidence are in `artifacts/compiler-cross-corpus-20261006/corpus.sqlite3` at the
+workspace root (`failure_audit`, `failure_groups`, and report
+`failure-audit-cts-current`). Detailed replay and comparison databases sit
+alongside it. Unsupported inputs are not reported as executed CTS skips.

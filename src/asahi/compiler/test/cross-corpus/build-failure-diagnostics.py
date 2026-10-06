@@ -21,6 +21,13 @@ provenance = json.loads((compiler / 'provenance.json').read_text())
 source = compiler / 'source/src/asahi/compiler/agx_compile_apple9.c'
 s = source.read_text()
 
+# Print only the failed physical instruction, without enabling whole-program
+# traces. This exposes placement/encoding failures after successful lowering.
+pack_failure = s.index('"APPLE9_PACK_FAIL i=')
+guard = s.rfind('if (agx_apple9_trace_enabled())', 0, pack_failure)
+assert guard >= 0
+s = s[:guard] + s[guard:].replace('if (agx_apple9_trace_enabled())', 'if (true)', 1)
+
 def modify_function(name, change):
     global s
     start = s.index('\n' + name + '(')
