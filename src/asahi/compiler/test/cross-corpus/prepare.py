@@ -5,7 +5,7 @@ Bare shader measurements use declared descriptor types, default specialization
 constants, 256 runtime-array descriptors, and a default graphics state. They
 are explicitly distinct from Fossilize's recorded pipeline state.
 """
-import argparse,collections,hashlib,json,struct,subprocess
+import argparse,collections,hashlib,json,struct,subprocess,tarfile
 from pathlib import Path
 STAGES={0:1,1:2,2:4,3:8,4:16,5:32,5267:64,5268:128,5364:64,5365:128}
 def reflect(data):
@@ -70,27 +70,32 @@ def reflect(data):
   unique[s,b]=(t,c)
  return dict(entries=entries,bindings=[(s,b,t,c) for (s,b),(t,c) in sorted(unique.items())],push=(push+3)//4*4,runtime_descriptor_array=runtime)
 def main():
- p=argparse.ArgumentParser();p.add_argument('--source',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--glsl',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);out=a.output.resolve();(out/'spv').mkdir();(out/'meta').mkdir();seen={};counts=collections.Counter()
- with (out/'manifest.jsonl').open('w') as manifest:
-  suffixes={'.vert','.frag','.comp','.geom','.tesc','.tese','.mesh','.task','.rgen','.rchit','.rmiss','.rahit','.rint','.rcall'}
-  files=sorted(f for f in a.source.rglob('*') if f.is_file() and (f.suffix in suffixes if a.glsl else f.suffix=='.spv'))
-  for f in files:
-   row={'source':str(f.relative_to(a.source))};counts['inputs']+=1
-   try:
-    if a.glsl:
-     target=out/'tmp.spv';r=subprocess.run(['glslangValidator','-V','--target-env','vulkan1.3','-I'+str(f.parent),str(f),'-o',str(target)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-     if r.returncode:row.update(status='frontend_failure',error=r.stdout.decode(errors='replace')[-4000:]);counts[row['status']]+=1;manifest.write(json.dumps(row)+'\n');continue
-     data=target.read_bytes()
-    else:data=f.read_bytes()
-    digest=hashlib.sha256(data).hexdigest();row['sha256']=digest
-    if digest in seen:row.update(status='duplicate',canonical=seen[digest]);counts['duplicates']+=1;manifest.write(json.dumps(row)+'\n');continue
-    seen[digest]=row['source'];spv=out/'spv'/(digest+'.spv');spv.write_bytes(data);info=reflect(data);row.update(info);prepared=[];unsupported=[]
-    for model,name in info['entries']:
-     if model not in (0,1,2,3,4,5):unsupported.append((model,name));continue
-     if any(s>=8 or c>65536 for s,b,t,c in info['bindings']) or info['push']>256:raise ValueError('layout exceeds runner limits')
-     meta=out/'meta'/(digest+'-'+str(model)+'.txt');meta.write_text(f'{spv} {STAGES[model]} {name} {info["push"]} {len(info["bindings"])}\n'+''.join('%d %d %d %d\n'%tuple(b) for b in info['bindings']));prepared.append(str(meta))
-    row.update(status='prepared' if prepared else 'unsupported_stage',metadata=prepared,unsupported_entries=unsupported);counts['unique']+=1;counts['prepared_entries']+=len(prepared)
-   except Exception as e:row.update(status='reflection_failure',error=str(e))
-   counts[row['status']]+=1;manifest.write(json.dumps(row)+'\n');manifest.flush()
- (out/'summary.json').write_text(json.dumps(counts,indent=2)+'\n');(out/'tmp.spv').unlink(missing_ok=True);print(json.dumps(counts))
+ from packed import Pack
+ p=argparse.ArgumentParser();p.add_argument('--source',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--population',default='public');p.add_argument('--glsl',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);out=a.output.resolve();pack=Pack(out/'corpus.sqlite3',True);seen={};counts=collections.Counter()
+ suffixes={'.vert','.frag','.comp','.geom','.tesc','.tese','.mesh','.task','.rgen','.rchit','.rmiss','.rahit','.rint','.rcall'}
+ archive=a.source if a.source.is_file() else a.source/'sources.tar.gz'
+ tar=tarfile.open(archive) if archive.exists() else None
+ files=sorted(Path(m.name) for m in tar.getmembers() if m.isfile() and (Path(m.name).suffix in suffixes if a.glsl else Path(m.name).suffix=='.spv')) if tar else sorted(f for f in a.source.rglob('*') if f.is_file() and (f.suffix in suffixes if a.glsl else f.suffix=='.spv'))
+ for f in files:
+  row={'source':str(f if tar else f.relative_to(a.source))};counts['inputs']+=1
+  try:
+   if a.glsl:
+    target=out/'pending.spv'
+    if tar:
+     source=tar.extractfile(str(f)).read()
+     if b'#include' in source:raise ValueError('archive GLSL includes require a source checkout')
+     command=['glslangValidator','-V','--target-env','vulkan1.3','--stdin','-S',f.suffix[1:],'-o',str(target)]
+    else:source=None;command=['glslangValidator','-V','--target-env','vulkan1.3','-I'+str(f.parent),str(f),'-o',str(target)]
+    r=subprocess.run(command,input=source,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if r.returncode:
+     row.update(status='frontend_failure',error=r.stdout.decode(errors='replace')[-4000:]);counts[row['status']]+=1;pack.add_file('diagnostics/'+row['source'],json.dumps(row).encode());continue
+    data=target.read_bytes()
+   else:data=tar.extractfile(str(f)).read() if tar else f.read_bytes()
+   digest=hashlib.sha256(data).hexdigest()
+   if digest in seen:counts['duplicates']+=1;continue
+   seen[digest]=row['source'];row=pack.ingest(data,row['source'],a.population);counts['unique']+=1;counts['prepared_entries']+=len(row['metadata'])
+  except Exception as e:row.update(status='reflection_failure',error=str(e));pack.add_file('diagnostics/'+row['source'],json.dumps(row).encode())
+  counts[row['status']]+=1
+  if counts['inputs']%256==0:pack.db.commit()
+ pack.db.commit();(out/'pending.spv').unlink(missing_ok=True);(out/'summary.json').write_text(json.dumps(counts,indent=2)+'\n');print(json.dumps(counts))
 if __name__=='__main__':main()

@@ -82,3 +82,37 @@ experiment. It rejects intra-block hoisting when NIR scalar-word pressure grows.
 It accounts for live-out and following-if uses, but does not model physical
 operand constraints and is not a physical-register guarantee. Nothing from
 this experiment is installed or enabled in the production compiler.
+
+## Storage after metadata exhaustion
+
+All corpora, per-shader metadata, detailed replay results, and comparisons now
+live in SQLite packs. Do not create per-module files, even for temporary replay.
+The earlier loose tree exhausted Btrfs metadata despite free data space. Its
+549,589 files were hash-verified into `corpus.sqlite3`, independently checked,
+and removed. The pack retains source manifests, aliases and interrupted runs.
+
+The current interfaces supersede the loose-file commands above:
+
+- `fetch-public.py OUTPUT` retains selected source files inside one tar archive
+  per corpus, with a small revision/license manifest.
+- `prepare.py --source DIR_OR_TAR --output DIR --population NAME [--glsl]`
+  creates `corpus.sqlite3`. GLSL uses one reusable output file; archive inputs
+  needing include resolution must use an existing source checkout.
+- `refresh-metadata.py --pack DB --source-population OLD --population NEW
+  --summary JSON` reflects archived modules into an indexed replay population.
+- `extract-cts.py --extractor TOOL --data CTS_DATA --pack DB --population NAME
+  --summary JSON [--resume-chunk N]` consumes binaries streamed from the private
+  CTS extractor. It writes no registries, module files or metadata files.
+  Completed chunks commit both aliases and a resume checkpoint atomically.
+- `run.py --pack DB --population NAME --icd JSON --runner FILE --host-shim FILE
+  --output DIR [--resume]` sends framed metadata and SPIR-V through a single
+  reusable batch stream. Results are compressed, keyed rows in `results.sqlite3`.
+- `import-packed-results.py --pack DB --run OLD --output DIR` recovers an
+  interrupted legacy run without expanding its original JSONL file.
+- `compare.py BASELINE CANDIDATE --pack DB --output DIR` writes detailed rows
+  in `comparison.sqlite3` and a small summary. Only matched successful compiles
+  contribute code totals; all outcome transitions remain counted.
+
+`--exclude-results` accepts packed result databases for continuation populations.
+Keep the corpus and source hashes stable when resuming, and distinguish timings
+across interruptions. Never infer GPU correctness from these CPU-only replays.

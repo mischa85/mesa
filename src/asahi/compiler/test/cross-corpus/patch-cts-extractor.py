@@ -7,21 +7,30 @@ from pathlib import Path
 import argparse,json,shlex,subprocess
 p=argparse.ArgumentParser();p.add_argument('--source',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);d=a.output.resolve();b=a.build.resolve();source=a.source.resolve()/'external/vulkancts/modules/vulkan/vktBuildPrograms.cpp';s='#include "deSha1.h"\n'+source.read_text()
 s=s.replace('const uint32_t numThreads    = deGetNumAvailableLogicalCores();','const uint32_t numThreads    = 2;').replace('const size_t numNodesInChunk = 500000;','const size_t numNodesInChunk = 4000;\n    unsigned corpusChunk = 0;')
-# The unmodified writer deletes shaders not present in the current chunk.
-# Give every chunk an independent registry to preserve the full population.
-s=s.replace('vk::BinaryRegistryWriter registryWriter(dstPath);','const std::string chunkPath = dstPath + "/chunk-" + de::toString(corpusChunk++);\n            vk::BinaryRegistryWriter registryWriter(chunkPath);')
+# Stream one binary per distinct chunk hash; no binary registry is written.
+s=s.replace('vk::BinaryRegistryWriter registryWriter(dstPath);', 'std::set<std::string> emitted;')
+s='#include <set>\n#include <cstdlib>\n'+s
+s=s.replace('    unsigned corpusChunk = 0;', '    unsigned corpusChunk = 0;\n    const unsigned resumeChunk = getenv("CORPUS_RESUME_CHUNK") ? atoi(getenv("CORPUS_RESUME_CHUNK")) : 0;')
+s=s.replace('                numNodesAdded++;', '                numNodesAdded++;\n                if (corpusChunk < resumeChunk) { iterator.next(); continue; }')
 s=s.replace('if (progIter->buildStatus == Program::STATUS_PASSED)', 'if (progIter->buildStatus == Program::STATUS_PASSED && progIter->validationStatus != Program::STATUS_FAILED)')
 s=s.replace('                    notSupported++;', '                    tcu::print("CORPUS_INIT_SKIP %s\\n", casePath.c_str());\n                    notSupported++;')
-# Preserve names before hashing/deduplicating the binary registries.
-s=s.replace('registryWriter.addProgram(progIter->id, *progIter->binary);','''{
-                    registryWriter.addProgram(progIter->id, *progIter->binary);
+s=s.replace('registryWriter.addProgram(progIter->id, *progIter->binary);', '''{
                     deSha1 digest; char hex[41];
                     deSha1_compute(&digest, progIter->binary->getSize(), progIter->binary->getBinary());
                     deSha1_render(&digest, hex); hex[40] = 0;
-                    std::cout << "CORPUS_PROGRAM " << (corpusChunk - 1) << " " << hex << " "
+                    if (emitted.insert(hex).second) {
+                        const unsigned char *bytes = progIter->binary->getBinary();
+                        std::string data; data.reserve(progIter->binary->getSize()*2);
+                        static const char digits[] = "0123456789abcdef";
+                        for (size_t i=0;i<progIter->binary->getSize();i++) {
+                            data += digits[bytes[i] >> 4]; data += digits[bytes[i] & 15];
+                        }
+                        std::cout << "CORPUS_BINARY " << hex << " " << data << "\\n";
+                    }
+                    std::cout << "CORPUS_PROGRAM " << corpusChunk << " " << hex << " "
                               << progIter->id.testCasePath << " " << progIter->id.programName << "\\n";
                 }''')
-s=s.replace('            registryWriter.write();', '            registryWriter.write();\n            std::cout << "CORPUS_CHUNK_DONE " << (corpusChunk - 1) << std::endl;')
+s=s.replace('            registryWriter.write();', '            if (corpusChunk >= resumeChunk) std::cout << "CORPUS_CHUNK_DONE " << corpusChunk << std::endl;\n            corpusChunk++;')
 # Avoid large per-shader logs on successful compilation; failed diagnostics remain.
 f=d/'vktBuildPrograms.cpp';f.write_text(s)
 commands=subprocess.check_output(['ninja','-t','commands','vk-build-programs'],cwd=b,text=True).splitlines();entry=next(c for c in commands if 'vktBuildPrograms.cpp.o ' in c or 'vktBuildPrograms.cpp.o -c' in c)

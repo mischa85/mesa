@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """Compare matched shader identities and expose every static-code regression."""
-import argparse,collections,csv,json,statistics
+import argparse,collections,json,sqlite3,statistics,zlib
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('baseline',type=Path);p.add_argument('candidate',type=Path);p.add_argument('--manifest',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
-load=lambda p:{r['key']:r for l in (p/'results.jsonl').open() if (r:=json.loads(l))}
+from packed import Pack,results
+p=argparse.ArgumentParser();p.add_argument('baseline',type=Path);p.add_argument('candidate',type=Path);p.add_argument('--pack',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
+load=lambda p:{r['key']:r for r in results(p)}
 x,y=load(a.baseline),load(a.candidate);assert x.keys()==y.keys();names={}
-for l in a.manifest.open():
- r=json.loads(l)
- if r.get('status')!='duplicate':names[r.get('sha256')]=r['source']
+pack=Pack(a.pack);names={sha:source for sha,source in pack.db.execute('SELECT sha,source FROM modules')}
 metrics=['instructions','copies','swaps','saves','fills','gprs','scratch'];rows=[];totals={};stages={};outcomes=collections.Counter()
 def values(r,kind):
  ps=[p for p in r['programs'] if p['kind']==kind and (r['stage'] in (1,2,3) or p['stage']==r['stage']) and not p['stub']]
@@ -30,8 +29,8 @@ for key in x:
 for table in [totals,*stages.values()]:
  for t in table.values():t['delta']=t['after']-t['before'];t['percent']=100*t['delta']/t['before'] if t['before'] else None
 regress=[r for r in rows if any(r['main_'+k+'_delta']>0 for k in metrics)]
-with (a.output/'per-shader.csv').open('w') as f:
- w=csv.DictWriter(f,fieldnames=list(rows[0]) if rows else ['key']);w.writeheader();w.writerows(rows)
-(a.output/'regressions.json').write_text(json.dumps(regress,indent=2)+'\n')
+with sqlite3.connect(a.output/'comparison.sqlite3') as db:
+ db.execute('CREATE TABLE shaders(key TEXT PRIMARY KEY,regression INTEGER,data BLOB NOT NULL) WITHOUT ROWID')
+ db.executemany('INSERT INTO shaders VALUES(?,?,?)',((r['key'],int(any(r['main_'+k+'_delta']>0 for k in metrics)),zlib.compress(json.dumps(r).encode(),1)) for r in rows))
 summary=dict(input_count=len(x),matched_pass=len(rows),outcomes=dict(outcomes),main_and_preamble_totals=totals,stages=stages,timing={k:{v:sum(r[k+'_'+v] for r in rows) for v in ['before','after']} for k in ['backend_cpu_ns','create_cpu_ns']},regressors=len(regress),new_failures=[k for k in x if x[k]['status']=='pass' and y[k]['status']!='pass'],baseline_only_failures=[k for k in x if x[k]['status']!='pass' and y[k]['status']=='pass'])
 (a.output/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps({k:v for k,v in summary.items() if k not in ['stages','main_and_preamble_totals']}))
