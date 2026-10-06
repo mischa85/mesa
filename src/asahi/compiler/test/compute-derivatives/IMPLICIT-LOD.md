@@ -109,3 +109,31 @@ python run-textures.py /tmp/compute-textures --probe ./texture-probe \
 Further work needs a validated compute LOD-query contract or a complete query
 lowering that preserves sampler and view semantics, including anisotropy.
 The tested gradient/query combination supplies no such contract.
+
+## Hardware knowledge still needed
+
+The missing contract is specifically a **compute LOD query**. Linear quad lane
+mapping, the arithmetic derivatives and explicit-gradient sampling are already
+validated. Enabling the extension requires one of these complete paths:
+
+* Identify a native query mode that accepts an explicit footprint (gradients or
+  an explicit LOD), including its operand layout, result channels, completion
+  dependency and supported dimensions. Setting the existing query bit on the
+  sampled-gradient or explicit-LOD mode does not establish this: measured
+  results are image colors. New encodings need source-authored hardware probes.
+* Establish whether the native implicit query has an independently controllable
+  derivative-group contract in compute, and how that interacts with active
+  lanes, subgroup boundaries and workgroup layout. Fragment behavior cannot
+  supply that evidence.
+* Alternatively, implement software query lowering only with complete sampler
+  and view semantics: footprint calculation for 1D/2D/3D/cube and arrays,
+  anisotropic LOD selection, sampler bias and limits, view base/minimum LOD,
+  nearest mip selection, and the separate clamped and unclamped query results.
+  Sampling correctness alone does not define the implementation-dependent
+  anisotropic query result.
+
+Use mip-colored images whose colors deliberately differ from their LODs, and
+check both result components. Include zero gradients, negative/fractional LOD,
+base-mip views, clamp boundaries, array-layer variation and cube faces. Keep the
+extension and its linear feature unadvertised until these contracts and the
+four remaining query CTS cases are resolved.
