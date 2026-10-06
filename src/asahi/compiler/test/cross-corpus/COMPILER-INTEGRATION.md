@@ -35,6 +35,13 @@ spills, waits and uniform metrics; it excludes timings.
 | Focused robustness/descriptor shaders | 5,738 | 5,738 compile | 0 |
 | Total | 7,020 | All previous outcomes retained | 0 |
 
+The allocator series' original **10,737-entry CTS population** was also
+replayed on the retained DXVK compiler and this integration: both produce
+10,421 successful compiles, 191 compiler failures and 125 crashes. Every
+outcome, diagnostic, final program and preamble record matches exactly. This
+population overlaps the samples above and must not be added as distinct shader
+coverage. Failures and crashes are retained separately, not called passes.
+
 The expected reference is the *combined* retained DXVK result, which already
 includes both older branches. It is not a requirement that robustness-optimized
 code equal the pre-optimization allocator/FTZ metrics. The previously measured
@@ -44,12 +51,33 @@ are compilation checks, not game execution results or a full CTS run.
 
 ## Hardware validation
 
-Pending an exclusive mini lease between the main thread's launch-loop phases.
-The private ARM64 library is built, SHA-256
+An exclusive mini lease was acquired at 07:41 EDT on 2026-10-06, after the
+main thread released its launch-loop phase. The target reports kernel
+`7.1.13-m4-g16+`, Apple M4 (G16G B1), Honeykrisp Mesa 26.3.0-devel
+(`git-8848a20233`). The private ARM64 library SHA-256 is
 `cc80df6f90c64880d274a528511b68d8f23d97f9d0d5e726466751f1907a88de`.
-Prepared cases reuse the prior normal (464), forced-spill (140), FP32 float
-controls (4,196), robustness/descriptor (1,315), and derivative-exposure (549)
-sets. Default compression stays enabled. The driver is not installed system-wide.
+
+| Focused hardware CTS set | Pass | Skip | Fail | Expected fail | Flake |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Normal allocator/compiler | 463 | 1 | 0 | 0 | 0 |
+| Forced spilling | 139 | 1 | 0 | 0 | 0 |
+| FP32 float controls | 3,328 | 868 | 0 | 0 | 0 |
+| Robustness/descriptors | 915 | 400 | 0 | 0 | 0 |
+| Compute derivative exposure (disabled) | 0 | 549 | 0 | 0 | 0 |
+
+Every case identity and outcome matches its individual branch's recorded
+hardware result. The normal/forced skip is the unsupported long-vector phi
+case. Forced-spill compiler captures contain **430 SAVE and 660 FILL** operations,
+with **31 passing single-case runs** containing both, establishing actual
+execution with spilling. The older allocator-only run had 432/662 across 32
+cases; the integrated optimizations remove one pair and its case no longer
+needs spills. Outcome identity is unchanged.
+
+`AGX_SPILL_COALESCE=1` is used in the normal and forced runs; only the forced run
+sets `AGX_MESA_DEBUG=spill`. Compression remains enabled, `ASAHI_MESA_DEBUG` and
+`HK_PERFTEST` are unset, and shader caches are disabled. No full CTS run, system
+installation, kernel replacement or reset was needed. The separate derivative
+experiment is not included in these integration results.
 
 ## Reproduction and evidence
 
