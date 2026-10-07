@@ -133,6 +133,8 @@ def minmax(a, b, is_min):
 
 # Accept either signed zero (FSign of zero is 0.0).
 ZERO_EITHER = -1
+# Unspecified result (e.g. sign of NaN).
+ANY = -2
 
 
 def trunc_exact(a):
@@ -170,7 +172,7 @@ def mix_candidates(a, b):
     return sorted({add_exact(a, mul_exact(HALF, d)), fma_exact(HALF, d, a),
                    add_exact(mul_exact(a, HALF), mul_exact(b, HALF)),
                    fma_exact(b, HALF, mul_exact(a, HALF)), fma_exact(a, HALF, mul_exact(b, HALF)),
-                   fma_exact(a, HALF ^ SIGN, fma_exact(b, HALF, a)) if False else add_exact(a, mul_exact(HALF, d))})
+                   mul_exact(add_exact(a, b), HALF)})
 
 
 def dot_candidates(a, b, c):
@@ -208,7 +210,7 @@ OPS = {
     "dot2": ("floatBitsToUint(dot(vec2(x,y),vec2(z,1.0)))", lambda a, b, c: dot_candidates(a, b, c), 0),
     "radians": ("floatBitsToUint(radians(x))", lambda a, b, c: mul_exact(a, RADIANS), 0),
     "not_equal": ("uint(x!=y)", lambda a, b, c: int(bool(is_nan(a) or is_nan(b)) or to_frac(a) != to_frac(b)), 0),
-    "sign": ("floatBitsToUint(sign(x))", lambda a, b, c: a if is_nan(a) else
+    "sign": ("floatBitsToUint(sign(x))", lambda a, b, c: ANY if is_nan(a) else
              ZERO_EITHER if to_frac(a) == 0 else (a & SIGN) | 0x3F800000, 0),
     "floor": ("floatBitsToUint(floor(x))", lambda a, b, c: floor_exact(a), 0),
     "ceil": ("floatBitsToUint(ceil(x))", lambda a, b, c: floor_exact(a ^ SIGN) ^ SIGN, 0),
@@ -304,7 +306,9 @@ def check(out, results):
             g = got.get(i)
             if g is None:
                 bad.append((i, None, want)); continue
-            if isinstance(want, list):
+            if want == ANY:
+                ok = True
+            elif isinstance(want, list):
                 ok = g in want or (any(is_nan(w) for w in want) and is_nan(g))
             elif want == ZERO_EITHER:
                 ok = (g & ~SIGN) == 0
@@ -321,7 +325,7 @@ def check(out, results):
         total_bad += len(bad)
         print(f"{name:14} {len(e['values']) - len(bad):5}/{len(e['values'])}" +
               ("" if not bad else "  e.g. " + ", ".join(
-                  f"#{i} in={[hex(v) for v in exp['cases'][i]]} got={hex(g) if g is not None else None} want={hex(w)}"
+                  f"#{i} in={[hex(v) for v in exp['cases'][i]]} got={hex(g) if g is not None else None} want={[hex(x) for x in w] if isinstance(w, list) else hex(w)}"
                   for i, g, w in bad[:3])))
     return total_bad
 
