@@ -13,7 +13,7 @@ round-to-nearest-even and gradual underflow. FMA is accepted within one ULP
 (the software path is faithfully rounded); everything else must match bit for
 bit, except that any NaN matches a NaN.
 """
-import json, random, struct, subprocess, sys
+import json, math, random, struct, subprocess, sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -188,6 +188,44 @@ def floor_exact(a):
     return round_f32(Fraction(n), negative_zero=bool(a & SIGN) and n == 0)
 
 
+def f64_to_f32(v):
+    if v != v:
+        return 0x7FC00000
+    if v in (float("inf"), float("-inf")):
+        return 0x7F800000 | (SIGN if v < 0 else 0)
+    return round_f32(Fraction(v), negative_zero=math.copysign(1, v) < 0)
+
+
+def approx(fn, tol, domain=lambda v: True):
+    """Correctly rounded double result with an ULP tolerance; ANY outside the
+    operation's defined domain."""
+    def oracle(a, b, c):
+        if is_nan(a):
+            return 0x7FC00000
+        v = float(to_frac(a)) if not is_inf(a) else math.copysign(math.inf, -1 if a & SIGN else 1)
+        if not domain(v, a):
+            return ANY
+        t = tol(v) if callable(tol) else tol
+        return dict(v=f64_to_f32(fn(v, a)), tol=t)
+    return oracle
+
+
+def div_oracle(a, b, c):
+    if is_nan(a) or is_nan(b):
+        return 0x7FC00000
+    # Division precision is only specified for |y| in [2^-126, 2^126].
+    if is_inf(a) or is_inf(b) or not (Fraction(2) ** -126 <= abs(to_frac(b)) <= Fraction(2) ** 126):
+        return ANY
+    return dict(v=round_f32(to_frac(a) / to_frac(b),
+                            negative_zero=bool((a ^ b) & SIGN)), tol=3)
+
+
+def exp2_exact(v, a):
+    if v < -160:
+        return 0.0
+    return 2.0 ** v
+
+
 OPS = {
     # name: (glsl expr, oracle(a, b, c) -> bits or ("bool", value), tolerance ulps)
     "identity": ("u.x", lambda a, b, c: a, 0),
@@ -214,6 +252,19 @@ OPS = {
              ZERO_EITHER if to_frac(a) == 0 else (a & SIGN) | 0x3F800000, 0),
     "floor": ("floatBitsToUint(floor(x))", lambda a, b, c: floor_exact(a), 0),
     "ceil": ("floatBitsToUint(ceil(x))", lambda a, b, c: floor_exact(a ^ SIGN) ^ SIGN, 0),
+    "divide": ("floatBitsToUint(x/y)", div_oracle, 0),
+    "reciprocal": ("floatBitsToUint(1.0/x)", lambda a, b, c: div_oracle(0x3F800000, a, c), 0),
+    "sqrt": ("floatBitsToUint(sqrt(x))", approx(lambda v, a: -0.0 if a == SIGN else math.sqrt(v), 3,
+                                                 lambda v, a: v >= 0), 0),
+    "inversesqrt": ("floatBitsToUint(inversesqrt(x))",
+                    approx(lambda v, a: math.inf if v == 0 else 1 / math.sqrt(v), 2,
+                           lambda v, a: v > 0 or a == 0), 0),
+    "log2": ("floatBitsToUint(log2(x))",
+             approx(lambda v, a: -math.inf if v == 0 else math.log2(v), 3,
+                    lambda v, a: v > 0 and not 0.5 <= v <= 2.0), 0),
+    "exp2": ("floatBitsToUint(exp2(x))",
+             approx(exp2_exact, lambda v: int(3 + 2 * abs(v)),
+                    lambda v, a: -200 < v < 128), 0),
 }
 
 
@@ -221,7 +272,8 @@ def cases():
     random.seed(20261006)
     special = [0, SIGN, 1, SIGN | 1, 0x00400000, 0x807FFFFF, 0x007FFFFF, 0x00800000,
                0x80800000, 0x00800001, 0x3F800000, 0xBF800000, 0x3F000000, 0x7F800000,
-               0xFF800000, 0x7FC12345, 0x7E800000, 0x7F7FFFFF, 0x0C000000, 0x34000000]
+               0xFF800000, 0x7FC12345, 0x7E800000, 0x7F7FFFFF, 0x0C000000, 0x34000000,
+               0xC3080000, 0xC3100000, 0xC2FE0000, 0xC3150000, 0xC2FC8000]
     out = []
     for a in special:
         for b in special:
@@ -306,6 +358,9 @@ def check(out, results):
             g = got.get(i)
             if g is None:
                 bad.append((i, None, want)); continue
+            tol = e["tol"]
+            if isinstance(want, dict):
+                want, tol = want["v"], want["tol"]
             if want == ANY:
                 ok = True
             elif isinstance(want, list):
@@ -316,8 +371,9 @@ def check(out, results):
                 ok = g == want
             elif is_nan(want):
                 ok = is_nan(g)
-            elif e["tol"]:
-                ok = (g & SIGN) == (want & SIGN) and abs((g & ~SIGN) - (want & ~SIGN)) <= e["tol"]
+            elif tol:
+                ok = ((g & SIGN) == (want & SIGN) and abs((g & ~SIGN) - (want & ~SIGN)) <= tol) or (
+                    (g & ~SIGN) == 0 and (want & ~SIGN) == 0)
             else:
                 ok = g == want
             if not ok:
@@ -325,7 +381,7 @@ def check(out, results):
         total_bad += len(bad)
         print(f"{name:14} {len(e['values']) - len(bad):5}/{len(e['values'])}" +
               ("" if not bad else "  e.g. " + ", ".join(
-                  f"#{i} in={[hex(v) for v in exp['cases'][i]]} got={hex(g) if g is not None else None} want={[hex(x) for x in w] if isinstance(w, list) else hex(w)}"
+                  f"#{i} in={[hex(v) for v in exp['cases'][i]]} got={hex(g) if g is not None else None} want={[hex(x) for x in w] if isinstance(w, list) else w if isinstance(w, dict) else hex(w)}"
                   for i, g, w in bad[:3])))
     return total_bad
 
