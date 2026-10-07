@@ -131,6 +131,53 @@ def minmax(a, b, is_min):
     return a if ((va < vb) == is_min) else b
 
 
+# Accept either signed zero (FSign of zero is 0.0).
+ZERO_EITHER = -1
+
+
+def trunc_exact(a):
+    if is_nan(a) or is_inf(a):
+        return a
+    v = to_frac(a)
+    n = int(v)  # toward zero
+    return round_f32(Fraction(n), negative_zero=bool(a & SIGN)) if n == 0 else round_f32(Fraction(n))
+
+
+def round_even_exact(a):
+    if is_nan(a) or is_inf(a):
+        return a
+    v = to_frac(a)
+    n = round(v)  # Python rounds halves to even
+    return round_f32(Fraction(n), negative_zero=bool(a & SIGN)) if n == 0 else round_f32(Fraction(n))
+
+
+def clamp01(a):
+    if is_nan(a):
+        return ZERO_EITHER
+    v = to_frac(a)
+    if v <= 0:
+        return 0 if v < 0 or not a & SIGN else ZERO_EITHER
+    return 0x3F800000 if v >= 1 else a
+
+
+RADIANS = 0x3C8EFA35  # float32(pi / 180)
+HALF = 0x3F000000
+
+
+def mix_candidates(a, b):
+    """mix(x, y, 0.5) under the usual flrp decompositions, each exactly."""
+    d = add_exact(b, a ^ SIGN)
+    return sorted({add_exact(a, mul_exact(HALF, d)), fma_exact(HALF, d, a),
+                   add_exact(mul_exact(a, HALF), mul_exact(b, HALF)),
+                   fma_exact(b, HALF, mul_exact(a, HALF)), fma_exact(a, HALF, mul_exact(b, HALF)),
+                   fma_exact(a, HALF ^ SIGN, fma_exact(b, HALF, a)) if False else add_exact(a, mul_exact(HALF, d))})
+
+
+def dot_candidates(a, b, c):
+    """x*z + y*1.0, fused or not."""
+    return sorted({fma_exact(a, c, b), add_exact(mul_exact(a, c), b)})
+
+
 def floor_exact(a):
     if is_nan(a) or is_inf(a):
         return a
@@ -154,9 +201,15 @@ OPS = {
     "max": ("floatBitsToUint(max(x,y))", lambda a, b, c: minmax(a, b, False), 0),
     "less": ("uint(x<y)", lambda a, b, c: int(not (is_nan(a) or is_nan(b)) and to_frac(a) < to_frac(b)), 0),
     "equal": ("uint(x==y)", lambda a, b, c: int(not (is_nan(a) or is_nan(b)) and to_frac(a) == to_frac(b)), 0),
-    "not_equal": ("uint(x!=y)", lambda a, b, c: int(is_nan(a) or is_nan(b) or to_frac(a) != to_frac(b)), 0),
+    "trunc": ("floatBitsToUint(trunc(x))", lambda a, b, c: trunc_exact(a), 0),
+    "round_even": ("floatBitsToUint(roundEven(x))", lambda a, b, c: round_even_exact(a), 0),
+    "clamp01": ("floatBitsToUint(clamp(x,0.0,1.0))", lambda a, b, c: clamp01(a), 0),
+    "mix": ("floatBitsToUint(mix(x,y,0.5))", lambda a, b, c: mix_candidates(a, b), 0),
+    "dot2": ("floatBitsToUint(dot(vec2(x,y),vec2(z,1.0)))", lambda a, b, c: dot_candidates(a, b, c), 0),
+    "radians": ("floatBitsToUint(radians(x))", lambda a, b, c: mul_exact(a, RADIANS), 0),
+    "not_equal": ("uint(x!=y)", lambda a, b, c: int(bool(is_nan(a) or is_nan(b)) or to_frac(a) != to_frac(b)), 0),
     "sign": ("floatBitsToUint(sign(x))", lambda a, b, c: a if is_nan(a) else
-             (a & SIGN) if to_frac(a) == 0 else (a & SIGN) | 0x3F800000, 0),
+             ZERO_EITHER if to_frac(a) == 0 else (a & SIGN) | 0x3F800000, 0),
     "floor": ("floatBitsToUint(floor(x))", lambda a, b, c: floor_exact(a), 0),
     "ceil": ("floatBitsToUint(ceil(x))", lambda a, b, c: floor_exact(a ^ SIGN) ^ SIGN, 0),
 }
@@ -251,7 +304,11 @@ def check(out, results):
             g = got.get(i)
             if g is None:
                 bad.append((i, None, want)); continue
-            if name in ("less", "equal", "not_equal"):
+            if isinstance(want, list):
+                ok = g in want or (any(is_nan(w) for w in want) and is_nan(g))
+            elif want == ZERO_EITHER:
+                ok = (g & ~SIGN) == 0
+            elif name in ("less", "equal", "not_equal"):
                 ok = g == want
             elif is_nan(want):
                 ok = is_nan(g)
