@@ -7,7 +7,10 @@ No companion shaders or constant substitute inputs are introduced.
 import argparse,json,shlex,subprocess,hashlib
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--mesa',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('compilers',nargs='+',type=Path);a=p.parse_args();r=a.mesa.resolve();b=a.build.resolve();d=a.output.resolve();d.mkdir(parents=True,exist_ok=False)
-s=(r/'src/asahi/vulkan/hk_shader.c').read_text();old='if (hk_apple9_needs_deferral(shader_count, infos, state, features))';assert s.count(old)==1
+ref=json.loads((a.compilers[0]/'provenance.json').read_text()).get('compiler_ref')
+# Take the common driver source from the compiler snapshot's ref, not the working tree,
+# so hk_shader.c changes are measured with the commit they belong to.
+s=subprocess.check_output(['git','show',ref+':src/asahi/vulkan/hk_shader.c'],cwd=r,text=True) if ref else (r/'src/asahi/vulkan/hk_shader.c').read_text();old='if (hk_apple9_needs_deferral(shader_count, infos, state, features))';assert s.count(old)==1
 s=s.replace(old,'''if (!(getenv("CORPUS_DIRECT_PRERAST") && shader_count == 1 &&
             (infos[0].stage == MESA_SHADER_GEOMETRY ||
              infos[0].stage == MESA_SHADER_TESS_CTRL ||
