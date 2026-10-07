@@ -232,6 +232,8 @@ main(int argc, char **argv)
                    .pName = "main"},
          .layout = pl},
       0, &pipe));
+   if (getenv("PROBE_COMPILE_ONLY"))
+      return 0;
    VkCommandPool cp;
    CK(vkCreateCommandPool(
       dev,
