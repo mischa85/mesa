@@ -18,7 +18,7 @@
 #include "agx_opcodes.h"
 #include "shader_enums.h"
 
-#include "test/cs2-pressure/ra-audit.h"
+#include "agx_ra_audit.h"
 
 DEBUG_GET_ONCE_OPTION(cached_agx_apple9_ra_webs, "AGX_APPLE9_RA_WEBS", NULL)
 
