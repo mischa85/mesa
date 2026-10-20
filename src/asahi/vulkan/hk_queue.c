@@ -917,6 +917,12 @@ hk_resolve_sync(struct hk_cmd_buffer *cmd, struct hk_sync_state *state,
 DEBUG_GET_ONCE_BOOL_OPTION(hk_apple9_fragment_barrier,
                            "HK_APPLE9_FRAGMENT_BARRIER", true)
 
+/* Replay tooling (read once, off by default): HK_ABORT_BEFORE_SUBMIT=1 exits
+ * before the first queue submit; HK_NULL_SUBMIT=1 submits nothing. */
+DEBUG_GET_ONCE_BOOL_OPTION(hk_abort_before_submit, "HK_ABORT_BEFORE_SUBMIT",
+                           false)
+DEBUG_GET_ONCE_BOOL_OPTION(hk_null_submit, "HK_NULL_SUBMIT", false)
+
 /* A barrier into pre-rasterization stages (as applications commonly write
  * for render targets read by "any shader") orders the render's tiling after
  * earlier renders. That order is observable only through memory the tiling
@@ -1026,7 +1032,7 @@ static VkResult
 queue_submit(struct hk_device *dev, struct hk_queue *queue,
              struct vk_queue_submit *submit)
 {
-   if (debug_get_bool_option("HK_ABORT_BEFORE_SUBMIT", false)) {
+   if (debug_get_option_hk_abort_before_submit()) {
       fprintf(stderr, "hk-replay: HK_ABORT_BEFORE_SUBMIT, exiting before the "
                       "first queue submit\n");
       _exit(3);
@@ -1045,7 +1051,7 @@ queue_submit(struct hk_device *dev, struct hk_queue *queue,
     * all. Command buffers are dropped; fences and semaphores signal as for an
     * empty submit.
     */
-   if (debug_get_bool_option("HK_NULL_SUBMIT", false))
+   if (debug_get_option_hk_null_submit())
       return queue_submit_empty(dev, queue, submit);
 
    unsigned command_count = 0;

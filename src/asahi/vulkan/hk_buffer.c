@@ -15,6 +15,9 @@
 #include "hk_entrypoints.h"
 #include "hk_physical_device.h"
 
+/* Replay tooling: HK_REPLAY_DEBUG=1 logs capture-replay placements. */
+DEBUG_GET_ONCE_BOOL_OPTION(hk_replay_debug, "HK_REPLAY_DEBUG", false)
+
 static uint32_t
 hk_get_buffer_alignment(const struct hk_physical_device *pdev,
                         VkBufferUsageFlags2KHR usage_flags,
@@ -212,7 +215,7 @@ hk_CreateBuffer(VkDevice device, const VkBufferCreateInfo *pCreateInfo,
       buffer->va =
          agx_va_alloc(&dev->dev, vma_size_B, alignment, flags, bda_fixed_addr);
 
-      if (bda_capture_replay && debug_get_bool_option("HK_REPLAY_DEBUG", false))
+      if (bda_capture_replay && debug_get_option_hk_replay_debug())
          fprintf(stderr,
                  "hk-replay: buffer size=0x%" PRIx64 " usage=0x%" PRIx64
                  " flags=0x%x requested=0x%" PRIx64 " got=0x%" PRIx64 "\n",

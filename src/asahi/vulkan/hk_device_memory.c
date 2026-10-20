@@ -19,6 +19,9 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 
+/* Replay tooling: HK_REPLAY_DEBUG=1 logs capture-replay placements. */
+DEBUG_GET_ONCE_BOOL_OPTION(hk_replay_debug, "HK_REPLAY_DEBUG", false)
+
 /* Supports opaque fd only */
 const VkExternalMemoryProperties hk_opaque_fd_mem_props = {
    .externalMemoryFeatures = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
@@ -198,7 +201,7 @@ hk_AllocateMemory(VkDevice device, const VkMemoryAllocateInfo *pAllocateInfo,
       }
    }
 
-   if (debug_get_bool_option("HK_REPLAY_DEBUG", false)) {
+   if (debug_get_option_hk_replay_debug()) {
       const VkMemoryAllocateFlagsInfo *flags_info =
          vk_find_struct_const(pAllocateInfo->pNext, MEMORY_ALLOCATE_FLAGS_INFO);
       const VkMemoryOpaqueCaptureAddressAllocateInfo *opaque_info =

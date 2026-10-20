@@ -1902,9 +1902,6 @@ hk_apple9_restrict_caps(struct vk_device_extension_table *ext,
     */
    props->maxColorAttachments = 8;
    props->maxFragmentOutputAttachments = 8;
-
-
-   fprintf(stderr, "WARNING: experimental Apple9 Honeykrisp; not conformant\n");
 }
 
 uint64_t hk_process_heap_used[VK_MAX_MEMORY_HEAPS];
@@ -1973,12 +1970,6 @@ hk_create_drm_physical_device(struct vk_instance *_instance,
       /* Fail silently, for virtgpu */
       result = VK_ERROR_INCOMPATIBLE_DRIVER;
       goto fail_pdev_alloc;
-   }
-
-   if (pdev->dev.chip == AGX_CHIP_G16G &&
-       !debug_get_bool_option("HK_EXPERIMENTAL_APPLE9", false)) {
-      result = VK_ERROR_INCOMPATIBLE_DRIVER;
-      goto fail_agx_device;
    }
 
    struct vk_physical_device_dispatch_table dispatch_table;

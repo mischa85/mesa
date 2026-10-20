@@ -220,9 +220,12 @@ hk_CreateSampler(VkDevice device,
 
    /* Sanity check the noborder setting. There's no way to recover from it being
     * wrong but at least we can make noise to lint for errors in the driconf.
+    * G16 always sets NOBORDER and samples formatted custom borders natively,
+    * so only an unformatted custom border is unhandled there.
     */
    static bool warned_custom_border = false;
-   if (HK_PERF(dev, NOBORDER) && custom_border && !warned_custom_border) {
+   if (HK_PERF(dev, NOBORDER) && custom_border && !native_custom &&
+       !warned_custom_border) {
       fprintf(stderr, "custom border colour used, but emulation is disabled\n");
       fprintf(stderr, "border %u\n", info->borderColor);
       fprintf(stderr, "unnorm %X\n", info->unnormalizedCoordinates);

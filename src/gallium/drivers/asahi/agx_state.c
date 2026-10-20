@@ -75,6 +75,15 @@ static _Atomic uint64_t apple9_program_serial;
 #include "nir_intrinsics_indices.h"
 #include "nir_xfb_info.h"
 #include "pool.h"
+#include "util/u_debug.h"
+
+/* Diagnostics (read once, off by default): AGX_APPLE9_TRACE_VBO_PROLOG=1
+ * prints the lowered VBO prolog NIR of each vertex link, and
+ * AGX_APPLE9_TRACE_VBO_PROLOG_EXIT=1 exits after the first one. */
+DEBUG_GET_ONCE_BOOL_OPTION(agx_apple9_trace_vbo_prolog,
+                           "AGX_APPLE9_TRACE_VBO_PROLOG", false)
+DEBUG_GET_ONCE_BOOL_OPTION(agx_apple9_trace_vbo_prolog_exit,
+                           "AGX_APPLE9_TRACE_VBO_PROLOG_EXIT", false)
 
 void
 agx_legalize_compression(struct agx_context *ctx, struct agx_resource *rsrc,
@@ -2957,7 +2966,7 @@ retry_apple9_inputs:
           sizeof(link_key.prolog.vs.attribs));
 
    if (agx_apple9_direct_render_enabled(dev) &&
-       getenv("AGX_APPLE9_TRACE_VBO_PROLOG") != NULL) {
+       debug_get_option_agx_apple9_trace_vbo_prolog()) {
       nir_builder diagnostic = nir_builder_init_simple_shader(
          MESA_SHADER_VERTEX, &agx_nir_options, "Apple9 diagnostic VS prolog");
       agx_nir_vs_prolog(&diagnostic, &link_key.prolog.vs);
@@ -2968,7 +2977,7 @@ retry_apple9_inputs:
       /* This mode exists to inspect the generated prolog before it is safe
        * to execute.  Terminate before command emission, never after it.
        */
-      if (getenv("AGX_APPLE9_TRACE_VBO_PROLOG_EXIT") != NULL)
+      if (debug_get_option_agx_apple9_trace_vbo_prolog_exit())
          exit(0);
    }
 
