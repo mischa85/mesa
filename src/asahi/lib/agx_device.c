@@ -688,8 +688,11 @@ agx_open_device(void *memctx, struct agx_device *dev)
     * heap, with exactly the advertised minimum capacity. */
    uint64_t kernel_size = MAX2(dev->params.vm_kernel_min_size, 32ull << 30);
    struct drm_asahi_vm_create vm_create = {0};
+   /* G16C (M4 Max) uses the same compact render context: its kernel driver
+    * relocates render bindings below 0x1000000000 into it and wants the
+    * kernel-private heap inside its 4-GiB reach, exactly as on G16G. */
    if (dev->params.gpu_generation == 16 &&
-       dev->params.gpu_variant == 'G') {
+       (dev->params.gpu_variant == 'G' || dev->params.gpu_variant == 'C')) {
       kernel_size = dev->params.vm_kernel_min_size;
       vm_create.kernel_end =
          AGX_APPLE9_RENDER_CONTEXT_BASE + (1ull << 32);
@@ -799,7 +802,10 @@ agx_open_device(void *memctx, struct agx_device *dev)
                                                      : AGX_CHIP_G14G;
       break;
    case 16:
-      assert(dev->params.gpu_variant == 'G');
+      /* G16C (M4 Max: 4 clusters of 10 cores) shares G16G's Apple9 ISA and
+       * command-stream formats; the firmware ABI differences live in the
+       * kernel driver. Cluster count only matters through core_masks. */
+      assert(dev->params.gpu_variant == 'G' || dev->params.gpu_variant == 'C');
       dev->chip = AGX_CHIP_G16G;
       break;
    case 17:
